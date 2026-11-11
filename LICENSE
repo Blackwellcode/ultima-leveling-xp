@@ -19,7 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-This license covers the code, user interface and graphics of Ultima Leveling XP.
-The route data is licensed separately under CC BY-NC-SA 4.0, see CREDITS.txt and
-LICENSE-DATA.txt. The libraries in libs\ keep their own licenses, see CREDITS.txt.
