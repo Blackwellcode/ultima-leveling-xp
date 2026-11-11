@@ -103,7 +103,7 @@ local function Handle(msg)
         DebugLine("bags", function() return ns.Bonus.DebugBags() end)
         DebugLine("paths", function()
             return (ns.Paths.IsReady() and "ready" or "building") .. ", " .. tostring(ns.Paths.stats.nodes) .. " nodes, "
-                .. tostring(ns.Paths.stats.edges) .. " edges"
+                .. tostring(ns.Paths.stats.edges) .. " edges, " .. tostring(ns.Paths.stats.links) .. " links"
         end)
         local p = ns.panel
         if not p then

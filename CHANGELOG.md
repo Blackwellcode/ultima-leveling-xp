@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.1 (2026-11-11)
+
+- Path dots and arrow: no more long detours. A path is only used when it is at most 1.5 times the
+  straight line; short distances are walked directly.
+- The path starts where it is shortest from your position, not at the nearest point behind you.
+- Walking paths of different routes that come close are connected, so the network finds more direct ways.
+- The path follows you: it is recalculated from your position when you leave it or move on.
+- Even spacing of the path dots, recorded zigzags smoothed out.
+
 ## 2.2.0 (2026-11-11) - first public release
 
 - Leveling talents: target ranks and the next point in the talent window, a card with build choice

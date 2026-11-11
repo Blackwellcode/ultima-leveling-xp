@@ -8,9 +8,12 @@ local R, S = ns.Runner, ns.State
 local Pins = LibStub and LibStub("HereBeDragons-Pins-2.0", true)
 
 local REACHED = 18      -- Yards: Zwischenpunkt erreicht
-local OFF_PATH = 400    -- Yards: weiter weg vom aktuellen Punkt -> Weg neu suchen
+local OFF_PATH = 45     -- Yards: so weit neben dem Weg -> Weg ab deiner Position neu suchen
+local REPLAN_MOVED = 60 -- Yards: so weit seit der letzten Suche bewegt -> neu suchen (bei weiten Zielen 15 % der Strecke)
+local REPLAN_GAP = 1.5  -- Sekunden: frühestens so oft neu suchen
 
 local goalKey, goal, points, idx = nil, nil, nil, 1
+local planned = { x = 0, y = 0, t = -100, net = false } -- Stand der letzten Suche
 Nav.onRide = false
 
 local function Dist(ax, ay, bx, by) return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2) end
@@ -108,6 +111,9 @@ local function Plan(a)
     if px and pci == tci then path = ns.Paths.Find(tci, px, py, tx, ty) end
     points = path or { { x = tx, y = ty, ci = tci, w = true, r = a.r, final = true } }
     idx = 1
+    planned.x, planned.y = px or 0, py or 0
+    planned.t = GetTime and GetTime() or 0
+    planned.net = ns.Paths.IsReady()
     DrawPins()
 end
 
@@ -128,22 +134,39 @@ function Nav.Update(view)
     end
 end
 
+-- Weg neu suchen? Wenn du neben dem Weg läufst, dich seit der letzten Suche ein gutes Stück bewegt hast
+-- (vielleicht gibt es jetzt einen besseren Einstieg) oder das Wegnetz inzwischen fertig ist.
+local function NeedsReplan(px, py)
+    if not goal then return false end
+    local now = GetTime and GetTime() or 0
+    if now - planned.t < REPLAN_GAP then return false end
+    if not planned.net and ns.Paths.IsReady() then return true end
+    local final = points[#points]
+    local remaining = Dist(px, py, final.x, final.y)
+    if Dist(px, py, planned.x, planned.y) >= math.max(REPLAN_MOVED, remaining * 0.15) then return true end
+    -- Abstand zum aktuellen Wegstück (vom vorigen Punkt bzw. Startpunkt zum aktuellen Punkt)
+    local cur = points[idx]
+    local prev = points[idx - 1] or { x = planned.x, y = planned.y }
+    if #points > 1 and ns.Paths.SegmentDist(px, py, prev.x, prev.y, cur.x, cur.y) > OFF_PATH then return true end
+    return false
+end
+
 -- Aktueller Zielpunkt für den Pfeil. Rückt weiter, wenn ein Zwischenpunkt erreicht oder überholt ist.
 function Nav.Target()
     if not points then return nil end
     local px, py, pci = S.PlayerWorld()
     if not px then return points[idx] end
+    if points[idx].ci == pci and NeedsReplan(px, py) then
+        Plan(goal)
+        if not points then return nil end
+    end
     local moved = false
     while idx < #points do
         local cur, nxt = points[idx], points[idx + 1]
         if cur.ci ~= pci then break end
-        local dCur = Dist(px, py, cur.x, cur.y)
-        if dCur <= REACHED or Dist(px, py, nxt.x, nxt.y) < Dist(cur.x, cur.y, nxt.x, nxt.y) then
+        if Dist(px, py, cur.x, cur.y) <= REACHED or Dist(px, py, nxt.x, nxt.y) < Dist(cur.x, cur.y, nxt.x, nxt.y) then
             idx = idx + 1
             moved = true
-        elseif dCur > OFF_PATH and goal then
-            Plan(goal)
-            return points and points[idx]
         else
             break
         end
