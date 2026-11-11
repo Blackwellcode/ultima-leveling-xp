@@ -1,0 +1,35 @@
+Ultima Leveling XP - Credits and licenses / Danksagung und Lizenzen
+===================================================================
+
+1. Code
+   The code, user interface and graphics of Ultima Leveling XP are original work,
+   licensed under the MIT License (see LICENSE.txt).
+   Code, Oberflaeche und Grafiken von Ultima Leveling XP sind eigenstaendig und stehen
+   unter der MIT-Lizenz (siehe LICENSE.txt).
+
+2. Route data / Routen-Daten
+   Files: UltimaLevelingXP_A\Routes_A.lua, UltimaLevelingXP_H\Routes_H.lua, Routes_B.lua,
+   UltimaLevelingXP_<language>\Text.lua, UltimaLevelingXP\Data\Travel.lua,
+   UltimaLevelingXP\Data\Flights.lua
+
+   These files are based on "RestedXP Guides" by RestedXP
+   (https://github.com/RestedXP/RXPGuides), licensed under
+   Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+   (https://creativecommons.org/licenses/by-nc-sa/4.0/, full text in LICENSE-DATA.txt).
+
+   Changes: converted into an own data format, texts cleaned up, references removed,
+   only routes suitable for WoW Forever kept.
+   Aenderungen: in ein eigenes Datenformat umgewandelt, Texte bereinigt, Verweise entfernt,
+   nur fuer WoW Forever geeignete Routen uebernommen.
+
+   The converted data is licensed under the same license (CC BY-NC-SA 4.0): attribution,
+   no commercial use, share alike.
+   Die umgewandelten Daten stehen unter derselben Lizenz (CC BY-NC-SA 4.0): Namensnennung,
+   keine kommerzielle Nutzung, Weitergabe nur unter gleichen Bedingungen.
+
+3. Libraries / Bibliotheken (unchanged, in libs\)
+   LibStub                - Kaelten, Cladhaire, ckknight, Mikk, Ammo, Nevcairiel, joshborke; public domain
+   CallbackHandler-1.0    - Ace3 Development Team; BSD license
+   HereBeDragons-2.0      - Nevcairiel; BSD license
+   LibDataBroker-1.1      - Tekkub
+   LibDBIcon-1.0          - Funkeh / funkydude

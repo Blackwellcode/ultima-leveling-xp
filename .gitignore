@@ -1,0 +1,7 @@
+# Build-Ausgabe
+dist/
+# erzeugte Datenbank (aus der Quelle unter F:\extern neu erzeugbar); Talente sind Handdaten
+data/*
+!data/Talents.lua
+# lokale Werkzeug-Einstellungen
+.claude/
