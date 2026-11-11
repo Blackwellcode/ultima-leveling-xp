@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.2 (2026-11-11)
+
+- Author name is now Blackwell Code (addon list, license).
+- Download link for the latest version: `UltimaLevelingXP.zip` on the Releases page.
+- GitHub forms for bug reports, wrong route steps and ideas.
+
 ## 2.2.1 (2026-11-11)
 
 - Path dots and arrow: no more long detours. A path is only used when it is at most 1.5 times the

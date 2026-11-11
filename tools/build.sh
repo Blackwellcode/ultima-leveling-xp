@@ -14,7 +14,7 @@ cd "$ROOT"
 DIST="$ROOT/dist"
 ADDONS_WIN="${ULTIMA_ADDONS:-E:\\World of Warcraft\\_forever_\\Interface\\AddOns}"
 NAME=UltimaLevelingXP
-VERSION=2.2.1
+VERSION=2.2.2
 DEPLOY=0; PACKAGE=0
 for a in "$@"; do
     case "$a" in
@@ -63,7 +63,7 @@ cp assets/CREDITS.txt assets/LICENSE-DATA.txt assets/LICENSE.txt "$MAIN/"
 ## Title: |cff33d6b0Ultima|r Leveling XP
 ## Notes: Leveling companion for WoW Forever: routes, arrow, travel planner, bonus tracking, leveling talents.
 ## Notes-deDE: Leveling-Begleiter für WoW Forever: Routen, Pfeil, Reiseplaner, Boni im Blick, Leveling-Talente.
-## Author: Noash
+## Author: Blackwell Code
 ## Version: $VERSION
 ## IconTexture: Interface\\AddOns\\$NAME\\Textures\\ulx-minimap-icon
 ## OptionalDeps: Questie, EllesmereUI, EllesmereUINameplates, EllesmereUIUnitFrames
@@ -130,7 +130,7 @@ for f in A H; do
 ## Interface: 16001
 ## Title: |cff33d6b0Ultima|r Leveling XP - Routes $label
 ## Notes: Route data, loaded by Ultima Leveling XP on demand.
-## Author: Noash
+## Author: Blackwell Code
 ## Version: $VERSION
 ## LoadOnDemand: 1
 ## Dependencies: $NAME
@@ -152,7 +152,7 @@ for f in data/Text_*.lua; do
 ## Interface: 16001
 ## Title: |cff33d6b0Ultima|r Leveling XP - $loc
 ## Notes: Route texts and NPC names for $loc clients, loaded by Ultima Leveling XP on demand.
-## Author: Noash
+## Author: Blackwell Code
 ## Version: $VERSION
 ## LoadOnDemand: 1
 ## Dependencies: $NAME

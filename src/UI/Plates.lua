@@ -1,5 +1,5 @@
 -- Plates: Quest-Fortschritt (Daten aus Questie) und Level-Warnung
--- an den EllesmereUI-Nameplates und am EllesmereUI-Zielrahmen. Frueher Teil von !NoashUI.
+-- an den EllesmereUI-Nameplates und am EllesmereUI-Zielrahmen. Frueher Teil eines eigenen UI-Addons.
 local _, ns = ...
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
