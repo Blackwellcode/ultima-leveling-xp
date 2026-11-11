@@ -4,6 +4,12 @@ Leveling companion for **WoW Forever** (Interface 16001): step-by-step routes fr
 Alliance and Horde, a navigation arrow, a travel planner, bonus tracking and leveling talents right in
 your talent window. Free, no ads, available in 10 languages.
 
+![Route window with bonus tiles, current step and arrow](docs/screenshots/panel.webp)
+
+![Leveling talents: target ranks under every talent and the next points next to the talent window](docs/screenshots/talents.webp)
+
+![Options window](docs/screenshots/options.png)
+
 ## Features
 
 - **Routes 1–60** for Alliance and Horde, plus dungeon, survival and AoE routes. The addon picks the
