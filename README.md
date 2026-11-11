@@ -7,9 +7,15 @@ and shows you which talent to take next, right inside your talent window.
 
 Free, open source (MIT), no ads, no account, no tracking. Available in 10 languages.
 
+<a href="https://github.com/Blackwellcode/ultima-leveling-xp/releases/latest/download/UltimaLevelingXP.zip"><img src="https://img.shields.io/badge/Download-UltimaLevelingXP.zip-33D6B0?style=for-the-badge&logo=github&logoColor=0d1117&labelColor=33D6B0&color=0d1117" alt="Download UltimaLevelingXP.zip" height="44"></a>
+&nbsp;
+<a href="https://buymeacoffee.com/blackwellcode"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=0d1117" alt="Buy me a coffee" height="44"></a>
+
+[Features](#what-ultima-does) · [Talents](#leveling-talents) · [Installation](#installation) · [Commands](#commands) · [FAQ](#faq) · [Report a bug](https://github.com/Blackwellcode/ultima-leveling-xp/issues/new/choose) · [Deutsch](#deutsch)
+
 ![Route window with bonus tiles, current step and arrow](docs/screenshots/panel.webp)
 
-> **Download:** grab `UltimaLevelingXP-<version>.zip` from the
+> **Download:** use the button above or grab `UltimaLevelingXP.zip` from the
 > [Releases](https://github.com/Blackwellcode/ultima-leveling-xp/releases) page.
 > Do not use the green "Code" button or the "Source code" archives; they do not contain the route data.
 
@@ -29,6 +35,7 @@ Free, open source (MIT), no ads, no account, no tracking. Available in 10 langua
 - [Commands](#commands)
 - [Compatibility](#compatibility)
 - [FAQ](#faq)
+- [Support](#support)
 - [Licenses](#licenses)
 - [Deutsch](#deutsch)
 
@@ -138,8 +145,8 @@ and Traditional Chinese. The interface follows your game client unless you choos
 
 ## Installation
 
-1. Download `UltimaLevelingXP-<version>.zip` from
-   [Releases](https://github.com/Blackwellcode/ultima-leveling-xp/releases).
+1. Download [`UltimaLevelingXP.zip`](https://github.com/Blackwellcode/ultima-leveling-xp/releases/latest/download/UltimaLevelingXP.zip)
+   (latest version) or pick a version on [Releases](https://github.com/Blackwellcode/ultima-leveling-xp/releases).
 2. Extract it into `World of Warcraft\_forever_\Interface\AddOns`.
 3. Keep all folders:
 
@@ -186,12 +193,23 @@ kept (they live in the `WTF` folder).
 **The window shows no route.** Open `/ultima routes` and pick one, or run `/ultima auto`.
 
 **Ultima sends me somewhere I already finished.** Click the step to skip it, or use the arrow buttons.
-Please open an [issue](https://github.com/Blackwellcode/ultima-leveling-xp/issues) with the route and
-step number so it can be fixed.
+Please report it with the [wrong route step](https://github.com/Blackwellcode/ultima-leveling-xp/issues/new/choose)
+form (route name and step number) so it can be fixed.
 
 **Is there a talent build for every spec?** For almost all. Holy Priest has no leveling build yet.
 
-**Lua error?** Please open an issue with the error text and the output of `/ultima debug`.
+**Lua error?** Please use the [bug report](https://github.com/Blackwellcode/ultima-leveling-xp/issues/new/choose)
+form with the error text and the output of `/ultima debug`.
+
+## Support
+
+Ultima Leveling XP is free and stays free, with every feature for everyone. If it saves you time
+while leveling, a coffee keeps the updates coming:
+
+<a href="https://buymeacoffee.com/blackwellcode"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="48" width="174"></a>
+
+Just as helpful: a ⭐ on GitHub helps other players find the addon, and every reported wrong step
+makes the routes better for everyone.
 
 ## Licenses
 
@@ -238,9 +256,13 @@ Kostenlos, quelloffen (MIT), ohne Werbung, ohne Konto, ohne Datensammlung. In 10
 - **Optionen** auf acht Seiten, automatische Skalierung nach Auflösung.
 - **Sprachen:** Oberfläche folgt dem Client, Routen-Texte und NPC-Namen in der Client-Sprache.
 
-**Installation:** `UltimaLevelingXP-<Version>.zip` unter
-[Releases](https://github.com/Blackwellcode/ultima-leveling-xp/releases) herunterladen (nicht das
-"Source code"-Archiv), nach `World of Warcraft\_forever_\Interface\AddOns` entpacken, alle Ordner
+**Installation:** [`UltimaLevelingXP.zip`](https://github.com/Blackwellcode/ultima-leveling-xp/releases/latest/download/UltimaLevelingXP.zip)
+herunterladen (neueste Version; nicht das "Source code"-Archiv), nach `World of Warcraft\_forever_\Interface\AddOns` entpacken, alle Ordner
 behalten. Bedienung über `/ultima`, Optionen über `/ultima optionen` oder Rechtsklick auf das
-Minimap-Symbol. Fehler bitte als [Issue](https://github.com/Blackwellcode/ultima-leveling-xp/issues)
-melden, mit Fehlertext und der Ausgabe von `/ultima debug`.
+Minimap-Symbol. Fehler und falsche Routen-Schritte bitte über die
+[Formulare](https://github.com/Blackwellcode/ultima-leveling-xp/issues/new/choose) melden, mit Fehlertext
+und der Ausgabe von `/ultima debug`.
+
+**Unterstützen:** Ultima ist und bleibt kostenlos, alle Funktionen für alle. Wenn es dir beim Leveln Zeit
+spart, freue ich mich über einen Kaffee: [buymeacoffee.com/blackwellcode](https://buymeacoffee.com/blackwellcode).
+Ein ⭐ auf GitHub hilft anderen Spielern, das Addon zu finden.

@@ -1,0 +1,17 @@
+name: Idea / improvement
+description: Suggest a feature or an improvement for Ultima.
+title: "[Idea]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Which problem does it solve while leveling?
+    validations:
+      required: true

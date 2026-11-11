@@ -1,0 +1,50 @@
+name: Bug report / Lua error
+description: A Lua error, a broken window or anything else that does not work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The more details, the faster it gets fixed.
+  - type: input
+    id: version
+    attributes:
+      label: Ultima version
+      description: Shown at the bottom left of the options window (`/ultima options`).
+      placeholder: "e.g. v2.2.1"
+    validations:
+      required: true
+  - type: input
+    id: character
+    attributes:
+      label: Faction, class, level and client language
+      placeholder: "e.g. Alliance Paladin 18, English client"
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Lua error
+      description: Full text from BugSack, the error popup or `/console scriptErrors 1`.
+      render: text
+  - type: textarea
+    id: debug
+    attributes:
+      label: Output of /ultima debug
+      description: Type `/ultima debug` in chat and copy the lines here.
+      render: text
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do, what happened?
+      placeholder: |
+        1. Opened the talent window
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag and drop screenshots here.

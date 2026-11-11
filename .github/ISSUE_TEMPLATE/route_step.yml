@@ -1,0 +1,44 @@
+name: Wrong route step
+description: A step sends you to the wrong place, cannot be done or is not detected as done.
+title: "[Route]: "
+labels: ["route"]
+body:
+  - type: input
+    id: route
+    attributes:
+      label: Route and step
+      description: Route name and step number from the top of the window.
+      placeholder: "e.g. 16-19 Darkshore, step 58 of 147"
+    validations:
+      required: true
+  - type: input
+    id: character
+    attributes:
+      label: Faction, race, class and level
+      placeholder: "e.g. Alliance Human Paladin 18"
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong?
+      options:
+        - The place is wrong / the NPC or object is not there
+        - The step is done but not detected
+        - The quest is not available
+        - The arrow or path dots lead the wrong way
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What did you expect, what happened? Coordinates or the correct place help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: A screenshot with the window, the map or the minimap.
