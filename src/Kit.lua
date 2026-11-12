@@ -265,3 +265,114 @@ function U.Icon(parent, size, layer)
     return t
 end
 
+-------------------------------------------------------------------------------
+-- Knöpfe des Hauses (Hausstil 1.2.0): jeder Knopf ist eine sichtbare Kachel mit Fläche, Haarlinien-Rand
+-- und Zuständen aus einer Tabelle. Ein System für Panel, Willkommensfenster, Optionen und Talentkarte.
+--   U.IconButton(parent, glyph, size)          Symbol-Knopf; b:SetTip(name, zweck), b:SetActive(on)
+--   U.TextButton(parent, text, variant, glyph) "primary" (helle Fläche) oder "secondary" (Kachel)
+-------------------------------------------------------------------------------
+local function Tint(region, c, a)
+    if region.SetTextColor then region:SetTextColor(c[1], c[2], c[3], a or 1) else region:SetVertexColor(c[1], c[2], c[3], a or 1) end
+end
+
+-- Zustände: Ruhe, darüber, gedrückt; Inhalt (Glyphe, Text) rückt beim Drücken 1 px nach unten
+local function Wire(b, fills, content)
+    local over, down = false, false
+    local function Refresh()
+        local fill = down and fills.press or (over and fills.hover or fills.rest)
+        b.bg:SetColor(fill[1], fill[2], fill[3], fill[4] or 1)
+        for _, part in ipairs(content) do
+            Tint(part.region, over and part.over or part.rest, b.dim)
+            part.region:ClearAllPoints()
+            part.region:SetPoint(part.point, b, part.point, part.x, part.y - (down and 1 or 0))
+        end
+    end
+    b.Refresh = Refresh
+    b:SetScript("OnMouseDown", function() down = true; Refresh() end)
+    b:SetScript("OnMouseUp", function() down = false; Refresh() end)
+    b:SetScript("OnEnter", function(self)
+        over = true
+        Refresh()
+        if self.tipName then
+            GameTooltip:SetOwner(self, self.tipAnchor or "ANCHOR_TOP")
+            GameTooltip:SetText(self.tipName, 1, 1, 1, 1, true)
+            if self.tipText then
+                local c = U.COLORS.text2
+                GameTooltip:AddLine(self.tipText, c[1], c[2], c[3], true)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", function()
+        over, down = false, false
+        Refresh()
+        if GameTooltip_Hide then GameTooltip_Hide() end
+    end)
+    function b:SetTip(name, text, anchor) self.tipName, self.tipText, self.tipAnchor = name, text, anchor end
+    function b:SetDisabled(off)
+        self.dim = off and 0.4 or 1
+        self:SetAlpha(off and 0.4 or 1)
+        self:EnableMouse(not off)
+        Refresh()
+    end
+    b.dim = 1
+    Refresh()
+end
+
+function U.IconButton(parent, glyph, size)
+    size = size or 30
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(size, size)
+    b.bg = U.Round(b, "round", TH.radius.control, TH.color.control, "BACKGROUND")
+    b.ring = U.Round(b, "ring", TH.radius.control, U.COLORS.cardBorder, "BORDER")
+    b.glyph = b:CreateTexture(nil, "ARTWORK")
+    b.glyph:SetTexture(TEX .. "ulx-glyph-" .. glyph)
+    local g = math.floor(size * 0.55 + 0.5)
+    b.glyph:SetSize(g, g)
+    -- an: kurzer heller Balken unter der Glyphe
+    b.on = b:CreateTexture(nil, "OVERLAY")
+    b.on:SetTexture(WHITE)
+    b.on:SetSize(10, 2)
+    b.on:SetPoint("BOTTOM", 0, 3)
+    Tint(b.on, U.COLORS.text)
+    b.on:Hide()
+    Wire(b, { rest = TH.color.control, hover = TH.color.controlHover, press = TH.color.controlPress },
+        { { region = b.glyph, point = "CENTER", x = 0, y = 0, rest = U.COLORS.text2, over = U.COLORS.text } })
+    function b:SetGlyph(name) self.glyph:SetTexture(TEX .. "ulx-glyph-" .. name) end
+    function b:SetActive(on) self.on:SetShown(on and true or false) end
+    return b
+end
+
+function U.TextButton(parent, text, variant, glyph, glyphAfter)
+    local primary = variant == "primary"
+    local b = CreateFrame("Button", nil, parent)
+    b:SetHeight(32)
+    local rest = primary and U.COLORS.text or TH.color.control
+    local hover = primary and U.COLORS.text2 or TH.color.controlHover
+    local press = primary and TH.color.muted or TH.color.controlPress
+    b.bg = U.Round(b, "round", TH.radius.control, rest, "BACKGROUND")
+    if not primary then b.ring = U.Round(b, "ring", TH.radius.control, U.COLORS.cardBorder, "BORDER") end
+    local ink = primary and TH.color.accentInk or U.COLORS.text
+    b.label = U.Label(b, TH.size.heading, ink, "OVERLAY", "Bold")
+    b.label:SetJustifyH("CENTER")
+    local content = { { region = b.label, point = "CENTER", x = 0, y = 0, rest = ink, over = ink } }
+    if glyph then
+        b.glyph = b:CreateTexture(nil, "ARTWORK")
+        b.glyph:SetTexture(TEX .. "ulx-glyph-" .. glyph)
+        b.glyph:SetSize(14, 14)
+        content[#content + 1] = { region = b.glyph, point = glyphAfter and "RIGHT" or "LEFT", x = glyphAfter and -12 or 12, y = 0,
+            rest = ink, over = ink }
+    end
+    function b:SetLabel(value)
+        self.label:SetText(value)
+        local w = TextWidth(self.label) + 32 + (glyph and 20 or 0)
+        self:SetWidth(math.max(96, math.floor(w + 0.5)))
+        -- Text mittig im Raum neben der Glyphe
+        content[1].x = glyph and (glyphAfter and -10 or 10) or 0
+        if self.Refresh then self.Refresh() end
+    end
+    Wire(b, { rest = rest, hover = hover, press = press }, content)
+    b:SetLabel(text)
+    return b
+end
+

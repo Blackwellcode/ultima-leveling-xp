@@ -94,7 +94,7 @@ local ns = {}
 for _, f in ipairs({ "Core.lua", "Locale/Locale.lua", "Locale/enUS.lua", "Locale/deDE.lua", "Locale/frFR.lua", "Theme.lua", "Kit.lua", "Settings.lua", "Engine/Conditions.lua", "Engine/State.lua", "Engine/Progress.lua",
     "Engine/Text.lua", "Engine/Runner.lua", "Engine/Travel.lua", "Engine/Paths.lua", "Engine/Talents.lua", "Data/Extra.lua", "Live.lua",
     "Auto.lua", "UI/Bonus.lua", "UI/Panel.lua", "UI/Item.lua", "Assist.lua", "UI/Nav.lua", "UI/Arrow.lua",
-    "UI/Minimap.lua", "UI/Plates.lua", "UI/Talents.lua", "UI/Options.lua", "Slash.lua" }) do
+    "UI/Minimap.lua", "UI/Plates.lua", "UI/Talents.lua", "UI/Options.lua", "UI/Welcome.lua", "Slash.lua" }) do
   assert(loadfile("src/" .. f))("UltimaLevelingXP", ns)
 end
 assert(loadfile("data/Talents.lua"))("UltimaLevelingXP", ns)
@@ -538,8 +538,10 @@ for _, category in ipairs(ns.OPTION_CATEGORIES) do
   for _, opt in ipairs(category.options) do
     if opt.path then
       optionCount = optionCount + 1
-      local t = ns.DEFAULTS.account
-      for key in opt.path:gmatch("[^%.]+") do if type(t) == "table" then t = t[key] else t = nil end end
+      -- "char.<Pfad>" sind Einstellungen je Charakter (Vorgaben in DEFAULTS.char), seit der Berufe-Seite
+      local t, path = ns.DEFAULTS.account, opt.path
+      if path:sub(1, 5) == "char." then t, path = ns.DEFAULTS.char, path:sub(6) end
+      for key in path:gmatch("[^%.]+") do if type(t) == "table" then t = t[key] else t = nil end end
       if t == nil then noDefault[#noDefault + 1] = opt.path end
     end
   end
@@ -729,6 +731,220 @@ check("QuestSource: danach keine Abfragen mehr", ns.QuestSource.Objectives("42")
 C_AddOns.IsAddOnLoaded = origLoaded
 QuestieLoader = nil
 ns.questieIncompatible = nil
+
+-- Schritt nur mit Zonen-Reise ("Reise nach Steinkrallengebirge", Screenshot 2026-11-12): in Westfall darf
+-- Ultima weder "Am Ziel" melden noch den Hinweis "Niemand da?" zeigen
+do
+  local zoneOnly = { id = "t:zone", s = { { a = { { "zone", to = "Stonetalon Mountains", zm = 1442 }, { "turnin", q = 79192 } } } } }
+  local zoneView = { route = zoneOnly, main = 1, lead = {}, sticky = {}, with = {}, open = {} }
+  check("Zonen-Schritt ausserhalb der Zone ist nicht am Ziel", ns.Runner.AtGoal(zoneView) == false,
+    "AtGoal=" .. tostring(ns.Runner.AtGoal(zoneView)))
+  -- Schlafsack-Route: jede Station hat einen Wegpunkt (Koordinaten aus zwei Guides, siehe src/Data/Extra.lua)
+  local bag = ns.Runner.Get("A:extra:Schlafsack-Questreihe")
+  local expect = { [3] = { 1442, 40.6 }, [4] = { 1442, 39.6 }, [5] = { 1432, 49.45 }, [6] = { 1424, 87.36 } }
+  for si, e in pairs(expect) do
+    local view = { route = bag, main = si, lead = {}, sticky = {}, with = {}, open = {} }
+    local wp = bag and ns.Runner.Waypoint(view)
+    check(("Schlafsack Schritt %d: Pfeil-Ziel Karte %d bei x %.2f"):format(si, e[1], e[2]),
+      wp ~= nil and wp.m == e[1] and wp.x == e[2] and ns.Runner.AtGoal(view) == false, tostring(wp and wp.m))
+  end
+end
+
+-- Schlafsack-Route neu starten mit altem Zeiger (Spielstand 2026-11-12: pointer = 6, Kette steht bei
+-- "Stepping Stones"): die Route muss beim Questzustand weitermachen, nicht sofort "fertig" melden
+do
+  local bagId = "A:extra:Schlafsack-Questreihe"
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  C_QuestLog.IsOnQuest = function(q) return q == 79192 end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 79008 end
+  ns.Runner.Load("A:route:13-15 Westfall")
+  ns.cdb.returnRoute = nil
+  ns.cdb.pointer[bagId] = 6
+  local outBefore = #out
+  UltimaBonusTile3.routeAction = true
+  UltimaBonusTile3._PostClick(UltimaBonusTile3)
+  ns.Update()
+  local finishedMsg = table.concat(out, " | ", outBefore + 1):find("Bonus route finished", 1, true) ~= nil
+    or table.concat(out, " | ", outBefore + 1):find("Zusatz-Route", 1, true) ~= nil
+  check("Schlafsack-Start mit altem Zeiger: Route bleibt aktiv", ns.cdb.route == bagId and not finishedMsg, tostring(ns.cdb.route))
+  check("Schlafsack-Start mit altem Zeiger: Schritt 3 (Stepping Stones abgeben)", ns.view.main == 3, tostring(ns.view.main))
+  -- Kette nie begonnen: Start in Westfall (Schritt 1), auch mit altem Zeiger
+  local function Restart(pointer, onQ, done)
+    C_QuestLog.IsOnQuest = function(q) return onQ[q] == true end
+    C_QuestLog.IsQuestFlaggedCompleted = function(q) return done[q] == true end
+    ns.Runner.Load("A:route:13-15 Westfall")
+    ns.cdb.returnRoute = nil
+    ns.cdb.pointer[bagId] = pointer
+    UltimaBonusTile3._PostClick(UltimaBonusTile3)
+    ns.Update()
+    return ns.cdb.route, ns.view.main
+  end
+  local r1, m1 = Restart(6, {}, {})
+  check("Schlafsack nie begonnen: Start bei Schritt 1", r1 == bagId and m1 == 1, tostring(r1) .. " " .. tostring(m1))
+  -- Scramble abgebrochen (79192 abgegeben, 79980 weder im Log noch fertig): Schritt 3 nimmt Scramble wieder an
+  local r2, m2 = Restart(6, {}, { [79008] = true, [79192] = true })
+  check("Schlafsack Scramble abgebrochen: Schritt 3", r2 == bagId and m2 == 3, tostring(r2) .. " " .. tostring(m2))
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Berufe abschalten (Willkommensfenster): Muster aus den Routen-Daten (Erhebung 2026-11-12)
+do
+  local P, S = ns.Progress, ns.State
+  local player = S.Player()
+  local skillLevel = S.SkillLevel
+  local levels = { cooking = 60, firstaid = 0 }
+  S.SkillLevel = function(name) return levels[name] end
+  local train = { a = { { "goto", m = 1453, x = 40, y = 40 }, { "target", names = { "Trainer" } }, { "train", sp = 3273 } } }
+  local farm = { a = { { "collect", i = 769, n = 50 }, { "mob", names = { "Boar" } }, { "skill", name = "cooking", lvl = 50, skip = true } } }
+  local withMeat = { a = { { "complete", q = 1, o = 1 }, { "skill", name = "cooking", lvl = 50, rev = true, skip = true } } }
+  local noMeat = { a = { { "complete", q = 1, o = 1 }, { "skill", name = "cooking", lvl = 50, skip = true } } }
+  local cookQuest = { a = { { "accept", q = 2 }, { "skill", name = "cooking", lvl = 50, skip = true } } }
+  ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
+  levels.cooking = 10
+  check("Berufe an: Lehrer-Schritt Erste Hilfe gilt", P.Applies(train, player))
+  check("Berufe an, Kochen 10: Hochzieh-Schritt gilt", P.Applies(farm, player))
+  ns.cdb.professions.firstaid = false
+  ns.cdb.professions.cooking = false
+  levels.cooking = 60
+  check("Erste Hilfe aus: Lehrer-Schritt entfällt", not P.Applies(train, player))
+  check("Kochen aus: Hochzieh-Schritt entfällt", not P.Applies(farm, player))
+  check("Kochen aus (gelernt 60): Weg mit Fleisch entfällt", not P.Applies(withMeat, player))
+  check("Kochen aus (gelernt 60): Weg ohne Fleisch gilt", P.Applies(noMeat, player))
+  check("Kochen aus: Schritt mit Quest bleibt", P.Applies(cookQuest, player))
+  -- echte Route: Duskwood mit Kochquests, an und aus im Vergleich
+  local duskwood
+  for _, r in ipairs(ns.routes) do if r.n == "24-27 Duskwood/Redridge" then duskwood = r end end
+  local function Count()
+    local n = 0
+    for _, s in ipairs(duskwood.s) do if P.Applies(s, player) then n = n + 1 end end
+    return n
+  end
+  local off = duskwood and Count()
+  ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
+  levels.cooking = 0
+  local on = duskwood and Count()
+  check("Echte Route Duskwood: Kochen aus zeigt weniger Schritte als Kochen an", duskwood ~= nil and off < on,
+    tostring(off) .. " / " .. tostring(on))
+  S.SkillLevel = skillLevel
+  ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
+end
+
+-- Willkommensfenster: erscheint beim ersten Start des Charakters, Schalter wirken auf die Einstellungen
+do
+  check("Willkommen: nach dem Start gebaut und offen", UltimaWelcome ~= nil and UltimaWelcome._shown == true,
+    tostring(UltimaWelcome and UltimaWelcome._shown))
+  ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
+  ns.ShowWelcome()
+  local switches = UltimaWelcome.choices and UltimaWelcome.choices.switches or {}
+  check("Willkommen: Seite Route mit fünf Schaltern (drei Berufe, zwei Dungeon-Schalter)", #switches == 5, #switches .. " Schalter")
+  local helpers = UltimaWelcome.helpers and UltimaWelcome.helpers.switches or {}
+  check("Willkommen: Seite Hilfen mit neun Schaltern", #helpers == 9, #helpers .. " Schalter")
+  local train = ns.db.autoTrain
+  if helpers[2] then helpers[2]._OnClick(helpers[2]) end
+  check("Willkommen: Schalter Zauber kaufen wirkt auf die Einstellung", ns.db.autoTrain == not train)
+  ns.db.autoTrain = train
+  if switches[1] then switches[1]._OnClick(switches[1]) end
+  check("Willkommen: Schalter Erste Hilfe schaltet nur diesen Charakter", ns.cdb.professions.firstaid == false
+    and ns.db.professions == nil)
+  UltimaWelcome:Hide()
+  if UltimaWelcome._OnHide then UltimaWelcome._OnHide(UltimaWelcome) end
+  check("Willkommen: Schließen merkt sich den Charakter", ns.cdb.welcomed == true)
+  ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
+end
+
+-- Dungeon-Vorbereitung: Liste, Start als Zusatz-Route, Verschachtelung mit dem Schlafsack, Rückkehr
+do
+  local R = ns.Runner
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  C_QuestLog.IsOnQuest = function() return false end
+  C_QuestLog.IsQuestFlaggedCompleted = function() return false end
+  local list = R.DungeonList()
+  local names, era, empty = {}, false, false
+  for _, e in ipairs(list) do
+    names[#names + 1] = e.name
+    if e.route.era then era = true end
+    if e.total == 0 then empty = true end
+  end
+  check("Dungeons: Forever-Liste der Allianz ohne Classic-Doppel und ohne leere", #list >= 20 and not era and not empty,
+    #list .. " Dungeons")
+  check("Dungeons: Anzeigename ohne Nummer, Reihenfolge der Quelle", names[1] == "Hall of Thanes" and names[3] == "The Deadmines",
+    tostring(names[1]) .. ", " .. tostring(names[3]))
+  local deadmines
+  for _, e in ipairs(list) do if e.name == "The Deadmines" then deadmines = e end end
+  check("Dungeons: Deadmines mit 13 Quests, keine erledigt", deadmines and deadmines.total == 13 and deadmines.done == 0,
+    deadmines and (deadmines.total .. "/" .. deadmines.done))
+  -- Start aus der Leveling-Route, dann Schlafsack: Rückweg bleibt die Leveling-Route
+  R.Load("A:route:13-15 Westfall")
+  R.StartBonus(deadmines.route.id)
+  check("Dungeons: Start merkt die Leveling-Route", ns.cdb.route == deadmines.route.id and ns.cdb.returnRoute == "A:route:13-15 Westfall",
+    tostring(ns.cdb.returnRoute))
+  R.StartBonus("A:extra:Schlafsack-Questreihe")
+  check("Dungeons: Schlafsack danach behält den Rückweg zur Leveling-Route", ns.cdb.returnRoute == "A:route:13-15 Westfall",
+    tostring(ns.cdb.returnRoute))
+  R.StartBonus(deadmines.route.id)
+  check("Dungeons: Levelaufstieg wechselt die Vorbereitung nicht", R.AutoSelect(false) == deadmines.route.id)
+  -- Alles abgegeben: Vorbereitung fertig, zurück zur Leveling-Route
+  C_QuestLog.IsQuestFlaggedCompleted = function() return true end
+  ns.Update()
+  check("Dungeons: fertig -> zurück zur Leveling-Route", ns.cdb.route == "A:route:13-15 Westfall" and ns.cdb.returnRoute == nil,
+    tostring(ns.cdb.route))
+  -- Mittendrin: 65 und 132 schon abgegeben (Redridge erledigt), du stehst in Westfall. Kein Flug nach
+  -- Redridge mehr, weiter mit der nächsten offenen Quest (135 in Westfall, Schritt 6)
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 65 or q == 132 end
+  R.StartBonus(deadmines.route.id)
+  ns.Update()
+  check("Dungeons: Reise zu erledigten Quests entfällt", ns.cdb.route == deadmines.route.id and ns.view.main == 6,
+    tostring(ns.view.main))
+  -- Von Hand verlassen
+  C_QuestLog.IsQuestFlaggedCompleted = function() return false end
+  R.StartBonus(deadmines.route.id)
+  check("Dungeons: von Hand zurück", R.EndBonus() == "A:route:13-15 Westfall" and ns.cdb.route == "A:route:13-15 Westfall")
+  -- Oberfläche: /ultima dungeon zeigt die Liste, ein Klick startet die Vorbereitung, die Routenwahl bietet den Rückweg
+  if UltimaRoutePicker then UltimaRoutePicker:Hide() end
+  SlashCmdList.ULTIMALEVELING("dungeon")
+  local shown = {}
+  for _, b in ipairs(UltimaRoutePicker and UltimaRoutePicker.buttons or {}) do
+    if b._shown then shown[#shown + 1] = b end
+  end
+  local dmButton
+  for _, b in ipairs(shown) do if (b.label._text or ""):find("^The Deadmines") then dmButton = b end end
+  check("Dungeons: Liste zeigt jeden Dungeon mit Fortschritt", #shown == #list and dmButton ~= nil
+    and dmButton.right._text == "0 von 13 erledigt", #shown .. " Einträge, " .. tostring(dmButton and dmButton.right._text))
+  if dmButton then dmButton._OnClick(dmButton) end
+  ns.Update()
+  check("Dungeons: Klick startet die Vorbereitung, Kopf ohne Nummer", ns.cdb.route == deadmines.route.id
+    and UltimaPanel.title._text == "The Deadmines" and (UltimaPanel.sub._text or ""):find("^Dungeon%-Quests") ~= nil,
+    tostring(UltimaPanel.title._text) .. " / " .. tostring(UltimaPanel.sub._text))
+  ns.ToggleRoutePicker()
+  local first = UltimaRoutePicker.buttons[1]
+  check("Dungeons: Routenwahl bietet den Rückweg zuerst", first and (first.label._text or ""):find("^Zurück zu 13%-15 Westfall") ~= nil,
+    tostring(first and first.label._text))
+  UltimaRoutePicker:Hide()
+  R.EndBonus()
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Knopfleiste: acht Knöpfe aus ns.PANEL_BUTTONS, jeder tut, was die Willkommens-Seite erklärt
+do
+  local by = UltimaPanel.buttonByKey or {}
+  local n = 0
+  for _ in pairs(by) do n = n + 1 end
+  check("Knöpfe: acht Knöpfe im Fenster", n == 8 and #ns.PANEL_BUTTONS == 8, n .. " Knöpfe")
+  if UltimaRoutePicker then UltimaRoutePicker:Hide() end
+  by.dungeon._OnClick(by.dungeon)
+  check("Knöpfe: Dungeon-Knopf öffnet die Dungeon-Liste", UltimaRoutePicker._shown == true and UltimaRoutePicker.mode == "dungeons")
+  UltimaRoutePicker:Hide()
+  local shownBefore = ns.db.arrow.shown
+  by.arrow._OnClick(by.arrow)
+  check("Knöpfe: Pfeil-Knopf schaltet den Pfeil", ns.db.arrow.shown == not shownBefore)
+  by.arrow._OnClick(by.arrow)
+  UltimaWelcome:Hide()
+  by.help._OnClick(by.help)
+  check("Knöpfe: Hilfe-Knopf öffnet die Anleitung", UltimaWelcome._shown == true)
+  check("Knöpfe: Anleitung erklärt jeden Knopf", UltimaWelcome.buttonsPage ~= nil and #UltimaWelcome.buttonsPage.items == 8,
+    tostring(UltimaWelcome.buttonsPage and #UltimaWelcome.buttonsPage.items))
+  UltimaWelcome:Hide()
+end
 
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)

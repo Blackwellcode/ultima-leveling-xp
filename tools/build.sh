@@ -14,7 +14,7 @@ cd "$ROOT"
 DIST="$ROOT/dist"
 ADDONS_WIN="${ULTIMA_ADDONS:-E:\\World of Warcraft\\_forever_\\Interface\\AddOns}"
 NAME=UltimaLevelingXP
-VERSION=2.3.0
+VERSION=2.4.0
 DEPLOY=0; PACKAGE=0
 for a in "$@"; do
     case "$a" in
@@ -125,6 +125,7 @@ UI\\Minimap.lua
 UI\\Plates.lua
 UI\\Talents.lua
 UI\\Options.lua
+UI\\Welcome.lua
 Slash.lua
 EOF
 } > "$MAIN/$NAME.toc"

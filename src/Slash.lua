@@ -6,7 +6,7 @@ local L = ns.L
 local ALIAS = {
     arrow = "pfeil", routes = "routen", border = "rahmen", hints = "tipps",
     language = "sprache", lang = "sprache", options = "optionen", config = "optionen", settings = "optionen",
-    automation = "quests", talents = "talente",
+    automation = "quests", talents = "talente", welcome = "willkommen", setup = "willkommen", dungeons = "dungeon", instanz = "dungeon", instance = "dungeon",
 }
 -- Kurzformen für /ultima sprache
 local LANG_SHORT = {
@@ -54,6 +54,10 @@ local function Handle(msg)
     cmd = ALIAS[cmd] or cmd
     if cmd == "" then
         ns.TogglePanel()
+    elseif cmd == "willkommen" then
+        ns.ShowWelcome()
+    elseif cmd == "dungeon" then
+        ns.ToggleDungeonPicker()
     elseif cmd == "pfeil" then
         ns.ToggleArrow()
     elseif cmd == "routen" then

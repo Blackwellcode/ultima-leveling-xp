@@ -1,5 +1,6 @@
 -- Liefert alle Text-Schlüssel, die der Code benutzt: L["..."], ns.F("..."), dazu die Daten-Einträge des
--- Optionsfensters (label = "...", hint = "...", Auswahl-Texte { Wert, "Text" }) und die Namen der
+-- Optionsfensters (label = "...", hint = "...", Auswahl-Texte { Wert, "Text" }), die Knopfliste des
+-- Panels (name = "...", desc = "...") und die Namen der
 -- Verkehrsmittel. Gemeinsame Quelle für tools/test-locale.lua und für die Pflege der Sprachdateien.
 -- Aufruf direkt (lua tools/locale-keys.lua) listet Schlüssel, die in enUS fehlen.
 local M = {}
@@ -19,6 +20,11 @@ function M.Used()
                 for k in s:gmatch('hint = "(.-)"') do used[k] = path end
                 -- Auswahl-Texte: { "wert", "Text" } ohne raw-Kennzeichen
                 for k in s:gmatch('{ "[%w]+", "([^"]+)" }') do used[k] = path end
+            end
+            -- Knopfliste des Panels (ns.PANEL_BUTTONS): name = "...", desc = "..."
+            if path:find("Panel.lua", 1, true) then
+                for k in s:gmatch('name = "(.-)", desc') do used[k] = path end
+                for k in s:gmatch('desc = "(.-)"') do used[k] = path end
             end
         end
     end

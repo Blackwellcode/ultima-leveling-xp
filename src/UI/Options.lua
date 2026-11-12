@@ -15,8 +15,15 @@ local frame, pages, sideButtons, current = nil, {}, {}, nil
 -------------------------------------------------------------------------------
 -- Zugriff auf Einstellungen über Pfade ("window.scale")
 -------------------------------------------------------------------------------
+-- "char.<Pfad>" meint die Einstellungen dieses Charakters (ns.cdb), alles andere das Konto (ns.db)
+local function Root(path)
+    if path:sub(1, 5) == "char." then return ns.cdb, path:sub(6), ns.DEFAULTS.char end
+    return ns.db, path, ns.DEFAULTS.account
+end
+
 local function Get(path)
-    local t = ns.db
+    local t
+    t, path = Root(path)
     for key in path:gmatch("[^%.]+") do
         if type(t) ~= "table" then return nil end
         t = t[key]
@@ -25,7 +32,8 @@ local function Get(path)
 end
 
 local function Set(path, value)
-    local t, last = ns.db, nil
+    local t, last
+    t, path = Root(path)
     for key in path:gmatch("[^%.]+") do
         if last then
             if type(t[last]) ~= "table" then t[last] = {} end
@@ -37,7 +45,8 @@ local function Set(path, value)
 end
 
 local function Default(path)
-    local t = ns.DEFAULTS.account
+    local t
+    _, path, t = Root(path)
     for key in path:gmatch("[^%.]+") do
         if type(t) ~= "table" then return nil end
         t = t[key]
@@ -102,6 +111,14 @@ local CATEGORIES = {
         { type = "toggle", path = "travel.flights", label = "Suggest flights and Hearthstone" },
         { type = "step", path = "travel.minSaving", label = "Only if it saves at least", min = 30, max = 300, step = 30, fmt = "s" },
     } },
+    { key = "prof", label = "Professions", options = {
+        { type = "note", label = "Off: Ultima leaves out trainer visits and skill-up steps and takes the route as if you never learned the profession." },
+        { type = "header", label = "Professions along the route" },
+        { type = "toggle", path = "char.professions.firstaid", label = "First Aid" },
+        { type = "toggle", path = "char.professions.cooking", label = "Cooking" },
+        { type = "toggle", path = "char.professions.fishing", label = "Fishing" },
+        { type = "button", label = "Show the welcome window again", fn = function() ns.ShowWelcome() end },
+    } },
     { key = "bonus", label = "Bonuses", options = {
         { type = "toggle", path = "tiles.shown", label = "Show the bonus tiles",
           hint = "Rested, food buff, sleeping bag and camp." },
@@ -151,43 +168,16 @@ end
 -------------------------------------------------------------------------------
 -- Bausteine
 -------------------------------------------------------------------------------
+-- Knöpfe aus dem gemeinsamen Baukasten (Kit.lua, Hausstil 1.2.0)
 local function GlyphButton(parent, glyph, onClick)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(24, 24)
-    -- ruhiger Symbol-Knopf: ohne Fläche, beim Darüberfahren die erhöhte Fläche
-    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
-    b.bg:SetShown(false)
-    b.glyph = b:CreateTexture(nil, "ARTWORK")
-    b.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
-    b.glyph:SetSize(14, 14)
-    b.glyph:SetPoint("CENTER")
-    b.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
+    local b = ns.IconButton(parent, glyph, 24)
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self)
-        self.bg:SetShown(true)
-        self.glyph:SetVertexColor(C.text[1], C.text[2], C.text[3])
-    end)
-    b:SetScript("OnLeave", function(self)
-        self.bg:SetShown(false)
-        self.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
-    end)
     return b
 end
 
 local function TextButton(parent, text, onClick)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetHeight(26)
-    -- ruhiger Text-Knopf: Haarlinien-Rand, beim Darüberfahren die erhöhte Fläche
-    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
-    b.bg:SetShown(false)
-    ns.Round(b, "ring", TH.radius.control, C.cardBorder, "BORDER")
-    b.text = ns.Label(b, TH.size.small, C.text, "OVERLAY", "Medium")
-    b.text:SetPoint("CENTER")
-    b.text:SetText(text)
-    b:SetWidth(math.max(90, ns.TextWidth(b.text) + 28))
+    local b = ns.TextButton(parent, text, "secondary")
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self) self.bg:SetShown(true) end)
-    b:SetScript("OnLeave", function(self) self.bg:SetShown(false) end)
     return b
 end
 
@@ -388,8 +378,8 @@ local function Build()
     local title = ns.Label(frame, TH.size.display, C.text, "OVERLAY", "Bold")
     title:SetPoint("LEFT", logo, "RIGHT", 10, 0)
     title:SetText(ns.TITLE)
-    local close = GlyphButton(frame, "plus", function() frame:Hide() end)
-    close.glyph:SetRotation(math.pi / 4) -- Plus um 45 Grad gedreht = Kreuz
+    local close = GlyphButton(frame, "kill", function() frame:Hide() end)
+    close:SetTip(L["Close"])
     close:SetPoint("TOPRIGHT", -12, -10)
 
     -- Seitenleiste

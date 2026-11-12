@@ -46,6 +46,8 @@ local DEFAULTS = {
         unavail = {},          -- [questId] = true: beim Questgeber nicht im Angebot (bis zum nächsten Level)
         taxi = {},             -- [Name] = true: bekannte Flugpunkte (Name in Client-Sprache, Rückfall)
         taxiIds = {},          -- [Knoten-ID] = true: bekannte Flugpunkte, sprachunabhängig
+        professions = { firstaid = true, cooking = true, fishing = true }, -- Berufe entlang der Route (false = überspringen)
+        -- welcomed (Willkommensfenster gesehen) entsteht beim Schließen des Fensters
     },
 }
 

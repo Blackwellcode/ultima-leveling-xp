@@ -1,4 +1,4 @@
--- Masterwork 1.0.0 · house: blackwellcode 1.1.0 · signature: the route rail with the ember step
+-- Masterwork 1.0.0 · house: blackwellcode 1.2.0 · signature: the route rail with the ember step
 -- critique: pending the in-game screenshot review
 -- Alle Farben, Schriften, Größen und Medienpfade des Addons stehen hier. Frame-Code nennt nur Tokens.
 local addonName, ns = ...
@@ -24,6 +24,10 @@ T.color = {
     good = hex("8FD18A", 1),
     warn = hex("FFC24A", 1),
     bad = hex("FF5A4E", 1),
+    -- Knöpfe als sichtbare Kacheln (Hausstil 1.2.0): Ruhe, darüber, gedrückt
+    control = hex("2A2D33", 1),
+    controlHover = hex("353840", 1),
+    controlPress = hex("1A1B1F", 1),
     -- Texturen ohne Einfärbung (eigene Farben eines Bildes) und Lichtkanten
     neutral = hex("FFFFFF", 1),
 }

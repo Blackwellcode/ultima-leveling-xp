@@ -16,6 +16,41 @@ P.BLOCKING = {
 P.TRAVEL = { hs = true, fly = true, zone = true, subzone = true, fp = true, home = true }
 local DEFAULT_RADIUS = 10 -- Yards
 
+-------------------------------------------------------------------------------
+-- Berufe entlang der Route (Erste Hilfe, Kochen, Angeln), je Charakter abschaltbar (ns.cdb.professions).
+-- Die Guides haben für jeden Beruf zwei Wege: einen für "Beruf vorhanden" und einen für "Beruf fehlt"
+-- (Duskwood: Wölfe töten mit Fleisch fürs Kochen oder ohne). Abgeschaltet heißt deshalb: Ultima rechnet
+-- mit Stufe 0, als hättest du den Beruf nie gelernt. Zusätzlich fallen Schritte weg, die den Beruf
+-- beibringen oder hochziehen (Lehrer, "Kochen auf 50 bringen"), solange sie keine Quest und keine
+-- Reise enthalten. Lehrer-Zauber laut Routen-Daten: "Train Cooking" 2550, "Train First Aid" 3273,
+-- "Train Journeyman First Aid" 3274, "Level First Aid to 80" 7934, "Train Fishing" 7734.
+-------------------------------------------------------------------------------
+P.PROFESSIONS = { "firstaid", "cooking", "fishing" }
+local PROFESSION_TRAIN = { [2550] = "cooking", [3273] = "firstaid", [3274] = "firstaid", [7934] = "firstaid",
+    [7734] = "fishing" }
+local KEEPS_STEP = { accept = true, turnin = true, complete = true, zone = true, subzone = true, fly = true,
+    fp = true, hs = true, home = true }
+
+function P.ProfessionOff(name)
+    local list = ns.cdb and ns.cdb.professions
+    return list ~= nil and name ~= nil and list[name] == false
+end
+
+-- Schritt dient nur einem abgeschalteten Beruf (Lehrer besuchen, Beruf hochziehen)?
+local function ProfessionOnly(step)
+    local hit = false
+    for _, a in ipairs(step.a) do
+        local tag = a[1]
+        if KEEPS_STEP[tag] then return false end
+        if tag == "train" and P.ProfessionOff(PROFESSION_TRAIN[a.sp]) then hit = true end
+        -- Ziel "Beruf auf Stufe X" oder Hochzieh-Schritt ("zeigen, solange unter X", X > 1)
+        if tag == "skill" and P.ProfessionOff(a.name) and (not a.skip or (not a.rev and (a.lvl or 0) > 1)) then
+            hit = true
+        end
+    end
+    return hit
+end
+
 -- Quest beim Questgeber nicht im Angebot (Voraussetzung fehlt, Level zu niedrig): Annahme blockiert nicht.
 -- Wird beim Gespräch mit dem Questgeber gesetzt (Live.lua) und bei Levelaufstieg geleert.
 local function Unavailable(q)
@@ -146,7 +181,8 @@ local function SkipByAction(a)
     if tag == "itemcount" then return S.ItemCount(a.i) < (a.n or 1) end
     if tag == "skill" and a.skip and a.lvl then
         -- Schritt entfällt, sobald die Bedingung erfüllt ist ("Kochen 10 farmen" bei Kochen 38)
-        local level = S.SkillLevel(a.name)
+        -- abgeschalteter Beruf zählt als nie gelernt (Stufe 0), siehe P.ProfessionOff
+        local level = P.ProfessionOff(a.name) and 0 or S.SkillLevel(a.name)
         if level == nil then return false end -- Stufe unbekannt: Schritt lieber zeigen
         return (level >= a.lvl) ~= (a.rev == true)
     end
@@ -163,6 +199,7 @@ end
 -- Gilt der Schritt für diesen Charakter und Zustand?
 function P.Applies(step, player)
     if not ns.Cond.Eval(step.c, player) then return false end
+    if ProfessionOnly(step) then return false end
     for _, a in ipairs(step.a) do
         if ns.Cond.Eval(a.c, player) and SkipByAction(a) then return false end
     end

@@ -241,6 +241,25 @@ function R.Evaluate(routeId)
         return false
     end
 
+    -- Dungeon-Vorbereitung: führt eine Reise ins Leere? Die Schritte nach ihr bis zur nächsten Reise
+    -- enthalten keine offene Quest-Arbeit mehr (alles schon angenommen, erledigt oder abgegeben). Dann
+    -- entfällt sie, sonst fliegst du für eine Quest, die du längst hast, quer über den Kontinent.
+    local QUEST_WORK = { accept = true, turnin = true, complete = true, collect = true }
+    local function TravelLeadsNowhere(si)
+        if route.k ~= "dungeonquests" then return false end
+        for j = si + 1, #steps do
+            local s = steps[j]
+            if P.Applies(s, player) and not IsDone(j) then
+                local pending = P.Pending(s, player, route.id, j)
+                if P.OnlyTravel(pending) then return true end
+                for _, entry in ipairs(pending) do
+                    if QUEST_WORK[entry.a[1]] then return false end
+                end
+            end
+        end
+        return true
+    end
+
     -- Zurückgestellte Abgaben: erledigt -> vergessen; jetzt abgebbar -> anzeigen; sonst weiter warten.
     for si in pairs(open) do
         local s = steps[si]
@@ -274,8 +293,8 @@ function R.Evaluate(routeId)
                     view.sticky[#view.sticky + 1] = si
                 elseif s.o and PassedOptional(si) then
                     -- verpasst, weiter
-                elseif P.OnlyTravel(pending) and Overtaken(si) then
-                    -- schon am Ziel der Reise, weiter
+                elseif P.OnlyTravel(pending) and (Overtaken(si) or TravelLeadsNowhere(si)) then
+                    -- schon am Ziel der Reise oder Reise ohne Quest dahinter, weiter
                     view.lead = {}
                 elseif ready and P.ChainNotStarted(s, player, pending) then
                     -- Folgequest einer Reihe, die du nie angefangen hast: gibt es nicht, weiter
@@ -332,9 +351,111 @@ end
 -- Steuerung
 -------------------------------------------------------------------------------
 function R.Load(id)
-    if not R.Get(id) then return false end
+    local route = R.Get(id)
+    if not route then return false end
     ns.cdb.route = id
+    -- eine eigentliche Route von Hand gewählt: ein gemerkter Rückweg aus einer Zusatz-Route ist hinfällig
+    if not R.BONUS[route.k] then ns.cdb.returnRoute = nil end
     return true
+end
+
+-- Route frisch starten: Zeiger, übersprungene und zurückgestellte Schritte vergessen, dann laden. Für
+-- Zusatz-Routen (Schlafsack-Questreihe): sonst beginnt ein neuer Start beim alten Zeiger, die Schritte
+-- dort gelten als "Kette nie begonnen", und die Route meldet sich sofort als fertig. Wo die Kette
+-- wirklich steht, ergibt sich ohne Zeiger aus dem Questlog.
+function R.Restart(id)
+    if not R.Get(id) then return false end
+    ns.cdb.pointer[id] = nil
+    if ns.cdb.manual then ns.cdb.manual[id] = nil end
+    if ns.cdb.open then ns.cdb.open[id] = nil end
+    return R.Load(id)
+end
+
+-------------------------------------------------------------------------------
+-- Zusatz-Routen: Schlafsack-Questreihe (extra) und Dungeon-Vorbereitung (dungeonquests). Sie laufen
+-- neben der eigentlichen Route; ist eine fertig, geht es mit der gemerkten Route weiter (Live.lua).
+-------------------------------------------------------------------------------
+R.BONUS = { extra = true, dungeonquests = true }
+
+function R.IsBonus(route)
+    return route ~= nil and R.BONUS[route.k] == true
+end
+
+-- Zusatz-Route frisch starten. Läuft schon eine Zusatz-Route, bleibt die gemerkte eigentliche Route
+-- erhalten (Schlafsack, dann Dungeon: danach geht es mit der Leveling-Route weiter, nicht mit dem Schlafsack).
+function R.StartBonus(id)
+    if not R.Get(id) then return false end
+    local current = ns.cdb.route and R.Get(ns.cdb.route)
+    if current and current.id ~= id and not R.IsBonus(current) then ns.cdb.returnRoute = current.id end
+    if ns.cdb.route ~= id then return R.Restart(id) end
+    return true
+end
+
+-- Zusatz-Route verlassen: zurück zur gemerkten Route. Liefert deren ID oder nil.
+function R.EndBonus()
+    local back = ns.cdb.returnRoute
+    if not (back and R.Get(back)) then return nil end
+    ns.cdb.returnRoute = nil
+    R.Load(back)
+    return back
+end
+
+-- Anzeigename: "03. The Deadmines" -> "The Deadmines" (die Nummer sortiert nur die Quelle)
+function R.DisplayName(route)
+    if not route then return nil end
+    if route.k == "dungeonquests" then return (route.n:gsub("^%d+%a?%.?%s+", "")) end
+    return route.n
+end
+
+-- Dungeons mit Quest-Vorbereitung für diesen Charakter: Forever-eigene Liste (ohne Classic-Doppel),
+-- nur mit mindestens einer Quest, in Reihenfolge der Quelle. Je Eintrag: route, name, range (grobe Stufe
+-- laut Quelle), total (Quests der Vorbereitung), done (abgegeben), active (im Questlog).
+function R.DungeonList(player)
+    player = player or S.Player()
+    local f = FactionLetter(player.faction)
+    local list = {}
+    for _, r in ipairs(ns.routes or {}) do
+        if r.k == "dungeonquests" and not r.era and (r.f == f or r.f == "B") then
+            local seen, total, done, active = {}, 0, 0, 0
+            for _, s in ipairs(r.s) do
+                if ns.Cond.Eval(s.c, player) then
+                    for _, a in ipairs(s.a) do
+                        if a[1] == "accept" and a.q and not seen[a.q] and ns.Cond.Eval(a.c, player) then
+                            seen[a.q] = true
+                            total = total + 1
+                            if S.TurnedIn(a.q) then done = done + 1 elseif S.OnQuest(a.q) then active = active + 1 end
+                        end
+                    end
+                end
+            end
+            if total > 0 then
+                list[#list + 1] = { route = r, name = R.DisplayName(r), range = r.sg, total = total, done = done,
+                    active = active, order = tonumber(r.n:match("^(%d+)")) or 999 }
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        if a.order ~= b.order then return a.order < b.order end
+        return a.name < b.name
+    end)
+    return list
+end
+
+-- Quest-Namen einer Vorbereitung (für den Tooltip): { { q = id, text = "Annehmen: X" }, ... }
+function R.DungeonQuests(route, player)
+    player = player or S.Player()
+    local list, seen = {}, {}
+    for _, s in ipairs(route.s) do
+        if ns.Cond.Eval(s.c, player) then
+            for _, a in ipairs(s.a) do
+                if a[1] == "accept" and a.q and not seen[a.q] and ns.Cond.Eval(a.c, player) then
+                    seen[a.q] = true
+                    list[#list + 1] = { q = a.q, a = a }
+                end
+            end
+        end
+    end
+    return list
 end
 
 -- Folge-Route laden, wenn die aktuelle fertig ist. Liefert die neue ID oder nil.
@@ -360,6 +481,8 @@ function R.AutoSelect(force)
     local player = S.Player()
     local current = ns.cdb.route and R.Get(ns.cdb.route)
     if current and not force and current.hi and player.level <= current.hi + 1 then return current.id end
+    -- eine gestartete Zusatz-Route (Schlafsack, Dungeon-Vorbereitung) ersetzt kein Levelaufstieg
+    if current and not force and R.IsBonus(current) then return current.id end
     local best = R.FindRoute(player)
     if best then R.Load(best.id) return best.id end
     return nil
@@ -440,6 +563,16 @@ function R.Waypoint(view)
 end
 
 -- Steht der Spieler am Ziel des Haupt-Schritts (alle Wegpunkte erreicht, Handlungen noch offen)?
+-- Eine offene Reise in eine Zone ohne Koordinaten ("Reise nach Steinkrallengebirge") zählt wie ein offener
+-- Wegpunkt: außerhalb der Zone ist niemand am Ziel.
 function R.AtGoal(view)
-    return view.route ~= nil and view.main ~= nil and R.Waypoint(view) == nil
+    if not (view.route ~= nil and view.main ~= nil and R.Waypoint(view) == nil) then return false end
+    local player = S.Player()
+    for _, ref in ipairs(R.Shown(view, false)) do
+        for _, entry in ipairs(P.Actions(ref.route.s[ref.si], player)) do
+            local tag = entry.a[1]
+            if (tag == "zone" or tag == "subzone") and not P.Done(entry.a) then return false end
+        end
+    end
+    return true
 end

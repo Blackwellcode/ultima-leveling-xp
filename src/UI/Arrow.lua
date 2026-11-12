@@ -17,10 +17,19 @@ local function SetLabel(self, text, sub)
     self.pill:SetShown(text ~= nil and text ~= "")
 end
 
+-- Scheibe nur zeigen, wenn sie etwas zeigt: ohne Ziel keine leere Scheibe mitten im Bild
+local function SetDial(self, shown)
+    if self.dialShown == shown then return end
+    self.dialShown = shown
+    self.dial:SetShown(shown)
+    self.ring:SetShown(shown)
+end
+
 local function Update(self, elapsed)
     self.t = (self.t or 0) + elapsed
     if self.t < 0.03 then return end
     self.t = 0
+    SetDial(self, true)
     -- Ziel kommt aus der Navigation: Zwischenpunkte des Wegnetzes, Hafen oder Routen-Wegpunkt
     local target = ns.Nav.Target()
     if ns.Nav.onRide then
@@ -60,6 +69,7 @@ local function Update(self, elapsed)
     if not target or not HBD then
         self.tex:Hide()
         SetLabel(self, nil)
+        SetDial(self, false)
         return
     end
     local tx, ty, tci = S.WorldPoint(target)
@@ -69,6 +79,7 @@ local function Update(self, elapsed)
     if not (tx and px and facing) or pci ~= tci then
         self.tex:Hide()
         SetLabel(self, nil)
+        SetDial(self, false)
         return
     end
     local angle, dist = HBD:GetWorldVector(pci, px, py, tx, ty)
@@ -98,8 +109,8 @@ local function Build()
         ns.db.arrow.point = { point, relPoint, x, y }
     end)
     -- Scheibe 74 px in der Fläche des Hauses, Rand in der Linienfarbe
-    ns.Round(arrow, "circle", 37, ns.COLORS.panel, "BACKGROUND")
-    ns.Round(arrow, "ring", 37, ns.COLORS.cardBorder, "BORDER")
+    arrow.dial = ns.Round(arrow, "circle", 37, ns.COLORS.panel, "BACKGROUND")
+    arrow.ring = ns.Round(arrow, "ring", 37, ns.COLORS.cardBorder, "BORDER")
     arrow.tex = arrow:CreateTexture(nil, "ARTWORK")
     arrow.tex:SetTexture(ns.TEX .. "ulx_navigation_arrow-1")
     arrow.tex:SetSize(44, 44)

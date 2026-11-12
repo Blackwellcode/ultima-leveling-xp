@@ -18,10 +18,14 @@ local LEFT, RIGHT = RAIL + 14, 16    -- Innenabstand nach der Schiene und rechts
 local CW = WIDTH - LEFT - RIGHT      -- Inhaltsbreite
 local LEVEL_W = 70                   -- rechter Kopfblock: "Stufe 16"
 local HEAD_W = CW - LEVEL_W
-local VERB_W = 62                    -- Verb-Spalte der Zeilen
+local VERB_W = 82                    -- Verb-Spalte der Zeilen: Symbol, dann das Verb
+local STEP_ICON = 20                 -- Symbol vor dem Schrittsatz
 local FIG_W = 64                     -- rechte Zahlen-Spalte (Entfernung, Zeit)
 local FIXED_H = 160 -- feste Höhe des Fensters (Kopf bis Statusleiste); die sichtbare Hülle wächst getrennt
 local MAX_ROWS = 8
+-- Werkzeugleiste: Schale unten, Kacheln in Gruppen (Hausstil 1.2.0)
+local TRAY_H, TRAY_INSET, TRAY_PAD = 42, 6, 6
+local BUTTON, BUTTON_GAP, GROUP_GAP = 30, 4, 12
 local MAX_TICKS = 160
 
 local panel, picker
@@ -186,34 +190,18 @@ local function Rule(y)
     r:Show()
 end
 
--------------------------------------------------------------------------------
--- Ruhige Symbol-Knöpfe: ohne Fläche, beim Darüberfahren die erhöhte Fläche, immer mit Tooltip
--------------------------------------------------------------------------------
-local function GlyphButton(glyph, tooltip, onClick)
-    local b = CreateFrame("Button", nil, panel)
-    b:SetSize(24, 24)
-    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
-    b.bg:SetShown(false)
-    b.glyph = b:CreateTexture(nil, "ARTWORK")
-    b.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
-    b.glyph:SetSize(16, 16)
-    b.glyph:SetPoint("CENTER")
-    Paint(b.glyph, C.text3)
-    b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self)
-        self.bg:SetShown(true)
-        Paint(self.glyph, C.text)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(tooltip, 1, 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function(self)
-        self.bg:SetShown(false)
-        Paint(self.glyph, C.text3)
-        GameTooltip_Hide()
-    end)
-    return b
-end
+-- Die Knöpfe der Werkzeugleiste, in dieser Reihenfolge und Gruppe. Eine Liste für Panel und
+-- Willkommensfenster (dort mit Symbol, Name und Zweck erklärt): key, Gruppe, Glyphe, Name, Zweck.
+ns.PANEL_BUTTONS = {
+    { key = "back", group = "step", glyph = "left", name = "One step back", desc = "Go back to the previous step." },
+    { key = "skip", group = "step", glyph = "right", name = "Skip step", desc = "Mark the current step as done and move on." },
+    { key = "route", group = "route", glyph = "list", name = "Choose route", desc = "Pick another route, or let Ultima choose one for your level." },
+    { key = "dungeon", group = "route", glyph = "dungeon", name = "Prepare a dungeon", desc = "Collect every quest for one dungeon, then back to your route." },
+    { key = "arrow", group = "tools", glyph = "compass", name = "Arrow on or off", desc = "Show or hide the navigation arrow." },
+    { key = "options", group = "tools", glyph = "settings", name = "Options", desc = "All settings, sorted by topic." },
+    { key = "help", group = "tools", glyph = "help", name = "Help", desc = "Opens the welcome guide with all buttons again." },
+    { key = "fold", group = "view", glyph = "minus", name = "Expand or collapse steps", desc = "Show only the header, or all steps." },
+}
 
 -------------------------------------------------------------------------------
 -- Zeilen: der Schrittsatz (erste offene Handlung) groß; weitere Handlungen als Verb-Spalte plus Objekt
@@ -236,7 +224,7 @@ local function GetRow(i)
     row.icon:SetSize(14, 14)
     row.icon:SetPoint("TOPLEFT", 0, -1)
     row.verb = Label(row, SZ.small, C.text3, "Medium")
-    row.verb:SetPoint("TOPLEFT", 0, -2)
+    row.verb:SetPoint("TOPLEFT", 18, -2)
     row.text = Label(row, SZ.body, C.text, "Medium")
     row.text:SetWordWrap(true)
     row.dist = Label(row, SZ.display, C.text, "Bold")
@@ -263,7 +251,7 @@ local function GetRow(i)
         if not self.full then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(self.full, 1, 1, 1, 1, true)
-        GameTooltip:AddLine(ns.L["Click: skip step"], C.text3[1], C.text3[2], C.text3[3])
+        GameTooltip:AddLine(ns.L["Right-click: skip step"], C.text3[1], C.text3[2], C.text3[3])
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function(self)
@@ -317,10 +305,16 @@ local function FillRow(row, index, ref, entry, y, waypoint, width)
     -- Der Schrittsatz: groß in der Anzeigeschrift, ohne Verb-Spalte. Erledigtes tritt zurück.
     local step = entry.first and not done
     local x
+    -- Symbol der Handlung (Annehmen, Abgeben, Töten, Sammeln, Reisen ...) vor jeder Zeile
+    row.icon:SetTexture(ns.TEX .. "ulx-glyph-" .. (GLYPH[a[1]] or "goto"))
+    row.icon:ClearAllPoints()
     if step then
         row.verb:Hide()
-        row.icon:Hide()
-        x = 0
+        row.icon:SetSize(16, 16)
+        row.icon:SetPoint("TOPLEFT", 0, -3)
+        Paint(row.icon, C.text)
+        row.icon:Show()
+        x = STEP_ICON + 4
         if row.styleKey ~= "step" then
             row.styleKey = "step"
             row.text:SetFont(ns.FontPath("Bold"), SZ.display, "")
@@ -335,17 +329,17 @@ local function FillRow(row, index, ref, entry, y, waypoint, width)
         end
         local verb, object = SplitVerb(text)
         x = VERB_W
+        row.icon:SetSize(12, 12)
+        row.icon:SetPoint("TOPLEFT", 0, -3)
+        Paint(row.icon, done and C.text3 or C.text2)
+        row.icon:Show()
         if verb then
-            row.icon:Hide()
             row.verb:SetText(verb)
-            ns.Fit(row.verb, VERB_W - 6, 9)
+            ns.Fit(row.verb, VERB_W - 24, 9)
             row.verb:Show()
             row.text:SetText(object or "")
         else
             row.verb:Hide()
-            row.icon:SetTexture(ns.TEX .. "ulx-glyph-" .. (GLYPH[a[1]] or "goto"))
-            Paint(row.icon, C.text3)
-            row.icon:Show()
             row.text:SetText(text or "")
         end
     end
@@ -404,9 +398,9 @@ local function GetLeg(i)
     local leg = CreateFrame("Frame", nil, panel.travel)
     leg:SetHeight(28)
     leg.mark = leg:CreateTexture(nil, "ARTWORK")
-    leg.mark:SetTexture(ns.WHITE)
-    leg.mark:SetSize(9, 3)
-    leg.mark:SetPoint("TOPLEFT", 0, -7)
+    leg.mark:SetTexture(ns.TEX .. "ulx-glyph-goto")
+    leg.mark:SetSize(12, 12)
+    leg.mark:SetPoint("TOPLEFT", 0, -2)
     leg.line = Hairline(leg, "BORDER")
     leg.line:SetWidth(1)
     leg.line:SetPoint("TOP", leg.mark, "BOTTOM", 0, -3)
@@ -435,6 +429,8 @@ local function RenderTravel(plan, y, width)
     local current = true
     for i, leg in ipairs(plan) do
         local row = GetLeg(i)
+        local legGlyph = leg.done and "check" or (leg.kind == "ride" and (leg.icon == "fly" and "fly" or leg.icon == "home" and "home" or "ship")) or "goto"
+        row.mark:SetTexture(ns.TEX .. "ulx-glyph-" .. legGlyph)
         Paint(row.mark, leg.done and C.ok or (current and C.text or C.text3))
         row.text:SetText(leg.text)
         ns.Fit(row.text, width - 18, 10)
@@ -474,8 +470,8 @@ local function StartSleepingBag()
         print(ns.WARN .. ns.L["Sleeping bag route not found for this faction."])
         return
     end
-    if ns.cdb.route ~= id then ns.cdb.returnRoute = ns.cdb.route end
-    R.Load(id)
+    -- Neu einsteigen: alter Zeiger weg, der Questlog bestimmt den Schritt (sonst sofort "fertig")
+    R.StartBonus(id)
     print(ns.PREFIX .. ns.L["Sleeping bag quest chain started. Your route continues afterwards."])
     ns.RequestUpdate()
 end
@@ -492,8 +488,11 @@ local function BuildTiles()
         t.title = Label(t, SZ.small, C.text3, "Medium")
         t.title:SetPoint("TOPLEFT", 0, -4)
         t.status = Label(t, SZ.heading, C.text, "Bold")
-        t.status:SetPoint("TOPLEFT", t.title, "BOTTOMLEFT", 0, -3)
+        t.icon = ns.Icon(t, 16)
+        t.icon:SetPoint("TOPLEFT", t.title, "BOTTOMLEFT", 0, -4)
+        t.status:SetPoint("LEFT", t.icon, "RIGHT", 5, 0)
         t.innerW = width - 4
+        t.valueW = width - 4 - 21
         -- Der Knopf meldet Drücken und Loslassen; gestartet wird nur beim Loslassen (sonst doppelt)
         t:SetScript("PostClick", function(self, _, down)
             if self.routeAction and not down then StartSleepingBag() end
@@ -546,7 +545,11 @@ local function RenderTiles()
             elseif data.state == "ok" then Paint(t.status, C.text)
             else Paint(t.status, ns.Bonus.COLORS[data.state] or C.text) end
         end
-        ns.Fit(t.status, t.innerW, 9)
+        ns.Fit(t.status, t.valueW, 9)
+        -- Symbol des Bonus (Spiel-Icon); ohne Wirkung gedämpft
+        t.icon:SetTexture(data.icon)
+        t.icon:SetDesaturated(idle and true or false)
+        t.icon:SetAlpha(idle and 0.5 or 1)
         t.tipText = data.tip
         titles[#titles + 1], statuses[#statuses + 1] = t.title, t.status
         t.routeAction = action and action.type == "route" or nil
@@ -581,14 +584,15 @@ end
 
 local function RenderHeader(view)
     local route = view.route
-    panel.title:SetText(route and route.n or ns.L["No route"])
+    panel.title:SetText(route and R.DisplayName(route) or ns.L["No route"])
     ns.Fit(panel.title, HEAD_W, 15)
     local level = S.Level()
     panel.levelText:SetText(tostring(level))
     if route then
         local total = #route.s
         local at = view.main or total
-        local sub = ns.F("Step %d of %d", at, total)
+        local sub = route.k == "dungeonquests" and ns.F("Dungeon quests, step %d of %d", at, total)
+            or ns.F("Step %d of %d", at, total)
         local parked = (view.waiting or 0) + #(view.open or {})
         if parked > 0 then sub = sub .. ", " .. ns.F("%d postponed", parked) end
         panel.sub:SetText(sub)
@@ -812,11 +816,11 @@ local function Render(view)
     for i = count + 1, #rows do rows[i]:Hide() end
     for i = ruleCount + 1, #rules do rules[i]:Hide() end
 
-    y = y - 4
+    y = y - 6
     panel.buttons:ClearAllPoints()
-    panel.buttons:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -RIGHT + 4, y)
+    panel.buttons:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT - TRAY_INSET, y)
     -- nur die Hülle wächst, siehe Build; die Schiene verteilt sich über die neue Höhe
-    panel.bodyH = -y + 24 + 12
+    panel.bodyH = -y + TRAY_H + TRAY_INSET
     panel.body:SetHeight(panel.bodyH)
     RenderRail(panel.railTotal, panel.railAt)
     PlaceMark()
@@ -825,28 +829,134 @@ end
 ns.On("VIEW", function(view) ns.Guard("Panel", Render, view) end)
 
 -------------------------------------------------------------------------------
--- Routenwahl
+-- Routenwahl und Dungeon-Vorbereitung: eine Liste im selben Aufklapp-Fenster
+--   Eintrag: text, right (Zahl rechts), current (gewählt), muted (erledigt), fn (Klick), keep (Liste bleibt
+--   offen), tip (Tooltip füllen), gap (Abstand danach)
 -------------------------------------------------------------------------------
-local function TogglePicker(anchor)
-    if picker and picker:IsShown() then picker:Hide() return end
+local function ShowList(anchor, entries)
     if not picker then
         picker = CreateFrame("Frame", "UltimaRoutePicker", panel)
         picker:SetFrameStrata("DIALOG")
+        picker:SetClampedToScreen(true) -- die Dungeon-Liste ist lang: nie über den Bildschirmrand
         ns.Round(picker, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -1, 14)
         ns.Round(picker, "round", TH.radius.panel, C.panel, "BACKGROUND")
         ns.Round(picker, "ring", TH.radius.panel, C.cardBorder, "BORDER")
         picker.buttons = {}
     end
     for _, b in ipairs(picker.buttons) do b:Hide() end
+    local y = -8
+    for i, entry in ipairs(entries) do
+        local b = picker.buttons[i]
+        if not b then
+            b = CreateFrame("Button", nil, picker)
+            b:SetSize(WIDTH - 16, 26)
+            b.hl = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
+            b.hl:SetShown(false)
+            b.label = Label(b, SZ.body, C.text2, "Medium")
+            b.label:SetPoint("LEFT", 10, 0)
+            b.right = Label(b, SZ.small, C.text3, "Bold")
+            b.right:SetPoint("RIGHT", -10, 0)
+            b.right:SetJustifyH("RIGHT")
+            b:SetScript("OnEnter", function(self)
+                self.hl:SetShown(true)
+                if self.tip then
+                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                    self.tip(GameTooltip)
+                    GameTooltip:Show()
+                end
+            end)
+            b:SetScript("OnLeave", function(self)
+                self.hl:SetShown(self.isCurrent and true or false)
+                GameTooltip_Hide()
+            end)
+            picker.buttons[i] = b
+        end
+        b.isCurrent = entry.current
+        b.tip = entry.tip
+        b.hl:SetShown(entry.current and true or false)
+        Paint(b.label, entry.current and C.text or (entry.muted and C.text3 or C.text2))
+        b.label:SetText(entry.text)
+        b.right:SetText(entry.right or "")
+        local rightW = entry.right and (ns.TextWidth(b.right) + 16) or 0
+        ns.Fit(b.label, WIDTH - 40 - rightW, 10)
+        b:SetScript("OnClick", function()
+            if not entry.keep then picker:Hide() end
+            entry.fn()
+            ns.RequestUpdate()
+        end)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", 8, y)
+        b:Show()
+        y = y - 26
+        if entry.gap then y = y - 8 end
+    end
+    picker:SetSize(WIDTH, -y + 8)
+    picker:ClearAllPoints()
+    picker:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 0, 8)
+    picker:Show()
+end
+
+-- Dungeon-Vorbereitung: je Dungeon die Quests, die es dafür gibt; rechts, wie viele erledigt sind
+local function DungeonEntries()
+    local entries = {}
+    local current = ns.cdb.route
+    -- in einer Vorbereitung: der Rückweg zur Leveling-Route steht oben
+    local route = current and R.Get(current)
+    local back = ns.cdb.returnRoute and R.Get(ns.cdb.returnRoute)
+    if R.IsBonus(route) and back then
+        entries[#entries + 1] = { text = ns.F("Back to %s", R.DisplayName(back)), gap = true, fn = function() R.EndBonus() end }
+    end
+    for _, d in ipairs(R.DungeonList()) do
+        local finished = d.done >= d.total
+        entries[#entries + 1] = {
+            text = d.name .. (d.range and ("  " .. Colored(HEX_MUTED, d.range)) or ""),
+            right = ns.F("%d of %d done", d.done, d.total),
+            current = current == d.route.id,
+            muted = finished,
+            fn = function()
+                R.StartBonus(d.route.id)
+                print(ns.PREFIX .. ns.F("Dungeon quests for %s started. Your route continues afterwards.", d.name))
+            end,
+            tip = function(tooltip)
+                tooltip:SetText(d.name, 1, 1, 1, 1, true)
+                for _, q in ipairs(R.DungeonQuests(d.route)) do
+                    local c = S.TurnedIn(q.q) and C.text3 or (S.OnQuest(q.q) and C.text or C.text2)
+                    tooltip:AddLine(T.Action(q.a), c[1], c[2], c[3], true)
+                end
+                tooltip:AddLine(ns.L["Grey: done. White: in your quest log."], C.text3[1], C.text3[2], C.text3[3], true)
+            end,
+        }
+    end
+    if #entries == 0 then
+        entries[1] = { text = ns.L["No dungeon quests for your faction."], muted = true, fn = function() end }
+    end
+    return entries
+end
+
+local function ToggleDungeons(anchor)
+    if picker and picker:IsShown() and picker.mode == "dungeons" then picker:Hide() return end
+    ShowList(anchor, DungeonEntries())
+    picker.mode = "dungeons"
+end
+
+local function TogglePicker(anchor)
+    if picker and picker:IsShown() then picker:Hide() return end
     local player = S.Player()
-    local entries = {
-        { text = ns.L["Automatic for your level"], fn = function() R.AutoSelect(true) end },
-        { text = (ns.db.routeKind == "dungeonroute" and ns.L["Dungeon routes: on"] or ns.L["Dungeon routes: off"]),
-          fn = function()
-              ns.db.routeKind = ns.db.routeKind == "dungeonroute" and "route" or "dungeonroute"
-              R.AutoSelect(true)
-          end },
-    }
+    local entries = {}
+    local route = ns.cdb.route and R.Get(ns.cdb.route)
+    local back = ns.cdb.returnRoute and R.Get(ns.cdb.returnRoute)
+    if R.IsBonus(route) and back then
+        entries[#entries + 1] = { text = ns.F("Back to %s", R.DisplayName(back)), fn = function() R.EndBonus() end }
+    end
+    entries[#entries + 1] = { text = ns.L["Prepare a dungeon"], keep = true,
+        fn = function() ShowList(anchor, DungeonEntries()); picker.mode = "dungeons" end }
+    entries[#entries + 1] = { text = ns.L["Automatic for your level"], fn = function() R.AutoSelect(true) end }
+    entries[#entries + 1] = { text = (ns.db.routeKind == "dungeonroute" and ns.L["Dungeon routes: on"] or ns.L["Dungeon routes: off"]),
+        gap = true,
+        fn = function()
+            ns.db.routeKind = ns.db.routeKind == "dungeonroute" and "route" or "dungeonroute"
+            R.AutoSelect(true)
+        end }
     local current = ns.cdb.route
     for _, kind in ipairs({ "route", "dungeonroute" }) do
         for _, r in ipairs(R.Candidates(player, kind)) do
@@ -858,42 +968,15 @@ local function TogglePicker(anchor)
             end
         end
     end
-    local y = -8
-    for i, entry in ipairs(entries) do
-        local b = picker.buttons[i]
-        if not b then
-            b = CreateFrame("Button", nil, picker)
-            b:SetSize(WIDTH - 16, 26)
-            b.hl = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
-            b.hl:SetShown(false)
-            b.label = Label(b, SZ.body, C.text2, "Medium")
-            b.label:SetPoint("LEFT", 10, 0)
-            b:SetScript("OnEnter", function(self) self.hl:SetShown(true) end)
-            b:SetScript("OnLeave", function(self) self.hl:SetShown(self.isCurrent and true or false) end)
-            picker.buttons[i] = b
-        end
-        b.isCurrent = entry.current
-        b.hl:SetShown(entry.current and true or false)
-        Paint(b.label, entry.current and C.text or C.text2)
-        b.label:SetText(entry.text)
-        ns.Fit(b.label, WIDTH - 40, 10)
-        b:SetScript("OnClick", function()
-            picker:Hide()
-            entry.fn()
-            ns.RequestUpdate()
-        end)
-        b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", 8, y)
-        b:Show()
-        y = y - 26
-        if i == 2 then y = y - 8 end
-    end
-    picker:SetSize(WIDTH, -y + 8)
-    picker:ClearAllPoints()
-    picker:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 0, 8)
-    picker:Show()
+    ShowList(anchor, entries)
+    picker.mode = "routes"
 end
 ns.ToggleRoutePicker = function() if panel then TogglePicker(panel.listButton) end end
+ns.ToggleDungeonPicker = function()
+    if not panel then return end
+    if not panel:IsShown() and not InCombatLockdown() then panel:Show() end
+    ToggleDungeons(panel.listButton)
+end
 
 -------------------------------------------------------------------------------
 -- Aufbau
@@ -1023,27 +1106,49 @@ local function Build()
     panel.nextText:SetWidth(CW)
     panel.nextText:SetWordWrap(true)
 
-    -- Ruhige Symbol-Knöpfe unten rechts
+    -- Werkzeugleiste unten (Knöpfe als Kacheln, siehe ns.PANEL_BUTTONS)
+    -- Werkzeugleiste: eine Schale unten im Fenster, die Knöpfe als Kacheln in Gruppen nach Zweck
     panel.buttons = CreateFrame("Frame", nil, panel)
-    panel.buttons:SetSize(5 * 24 + 4 * 4, 24)
-    local fold = GlyphButton(ns.db.window.collapsed and "plus" or "minus", ns.L["Expand or collapse steps"], function(self)
-        ns.db.window.collapsed = not ns.db.window.collapsed
-        self.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. (ns.db.window.collapsed and "plus" or "minus"))
-        Render()
-    end)
-    panel.listButton = GlyphButton("list", ns.L["Choose route"], function(self) TogglePicker(self) end)
-    local nextB = GlyphButton("right", ns.L["Skip step"], function()
-        if ns.view and ns.view.main then R.Skip(ns.view.main) ns.RequestUpdate() end
-    end)
-    local backB = GlyphButton("left", ns.L["One step back"], function()
-        if ns.view then R.Back(ns.view) ns.RequestUpdate() end
-    end)
-    local optionsB = GlyphButton("settings", ns.L["Options"], function() ns.ToggleOptions() end)
-    for i, b in ipairs({ backB, nextB, panel.listButton, optionsB, fold }) do
-        b:SetParent(panel.buttons)
+    panel.buttons:SetSize(CW + 2 * TRAY_INSET, TRAY_H)
+    ns.Round(panel.buttons, "round", TH.radius.panel, C.card, "BACKGROUND")
+    local actions = {
+        back = function() if ns.view then R.Back(ns.view) ns.RequestUpdate() end end,
+        skip = function() if ns.view and ns.view.main then R.Skip(ns.view.main) ns.RequestUpdate() end end,
+        route = function(self) TogglePicker(self) end,
+        dungeon = function(self) ToggleDungeons(self) end,
+        arrow = function(self)
+            ns.ToggleArrow()
+            self:SetActive(ns.db.arrow.shown)
+        end,
+        options = function() ns.ToggleOptions() end,
+        help = function() ns.ShowWelcome() end,
+        fold = function(self)
+            ns.db.window.collapsed = not ns.db.window.collapsed
+            self:SetGlyph(ns.db.window.collapsed and "plus" or "minus")
+            Render()
+        end,
+    }
+    panel.buttonByKey = {}
+    local x, lastGroup = TRAY_PAD, nil
+    for _, spec in ipairs(ns.PANEL_BUTTONS) do
+        local b = ns.IconButton(panel.buttons, spec.glyph, BUTTON)
+        b:SetTip(ns.L[spec.name], ns.L[spec.desc])
+        b:SetScript("OnClick", actions[spec.key])
         b:ClearAllPoints()
-        b:SetPoint("LEFT", (i - 1) * 28, 0)
+        if spec.group == "view" then
+            -- Einklappen gehört zur Ansicht: ganz rechts, abgesetzt
+            b:SetPoint("RIGHT", panel.buttons, "RIGHT", -TRAY_PAD, 0)
+        else
+            if lastGroup and lastGroup ~= spec.group then x = x + GROUP_GAP - BUTTON_GAP end
+            b:SetPoint("LEFT", panel.buttons, "LEFT", x, 0)
+            x = x + BUTTON + BUTTON_GAP
+            lastGroup = spec.group
+        end
+        panel.buttonByKey[spec.key] = b
     end
+    panel.listButton = panel.buttonByKey.route
+    panel.buttonByKey.fold:SetGlyph(ns.db.window.collapsed and "plus" or "minus")
+    panel.buttonByKey.arrow:SetActive(ns.db.arrow.shown)
 
     -- Kampf: abdunkeln; Schiene und Zahlen bleiben ruhig stehen
     panel:RegisterEvent("PLAYER_REGEN_DISABLED")

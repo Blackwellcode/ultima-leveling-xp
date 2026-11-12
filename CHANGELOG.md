@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.4.0 (2026-11-12)
+
+- Everything by button, no commands needed: the window has eight buttons (back, skip, choose route,
+  prepare a dungeon, arrow on/off, options, help, fold), each with a tooltip that says what it does.
+  They are real buttons now: tiles in a toolbar at the bottom of the window, grouped by purpose, with
+  hover, pressed and on states. Options, talent card and the welcome guide use the same buttons. The
+  help button opens the welcome guide, which shows every button with its symbol, name and purpose.
+- More symbols in the window: every step and action line starts with its symbol (accept, turn in, kill,
+  collect, travel ...), the status strip shows the bonus icons, travel legs show boat, flight or Hearthstone.
+- Prepare a dungeon: with the gate button pick a dungeon and Ultima collects every quest
+  for it, leads you through the dungeon and to the turn-ins, then goes back to your leveling route. The list
+  shows how many of the dungeon's quests you have done; hover a dungeon for its quests. "Back to <route>"
+  leaves the preparation at any time. Travel legs to quests you already finished are left out.
+- Welcome window on the first start of each character, four short pages: a sketch of the window with
+  numbered parts and the main features, all buttons explained, your route (professions, dungeons) and the helpers (automation,
+  travel planner, arrow, hints, map and nameplate markers, talents). Every switch applies at once.
+  Reopen it with the help button.
+- Professions along the route, per character: switch off First Aid, Cooking or Fishing and Ultima leaves
+  out the trainer visits and skill-up steps and follows the route as if you never learned the profession.
+  Quests stay in. Also in the options under Professions.
+- Route steps are skipped with a right-click; the tooltip now says so.
+- Sleeping bag quest chain: starting it from the status strip no longer ends it at once. A second start
+  resumed at the step where you left off; if that quest was not in your log, the chain counted as finished
+  and Ultima went straight back to your route. Now every start follows your quest log.
+- Sleeping bag quest chain: every stop now has a waypoint (the camp and the Mound of Dirt in Stonetalon, the
+  dam in Loch Modan, the ramp at the wall in Hillsbrad), and the Westfall and Barrens spots are more precise.
+  The arrow no longer says "At your destination" anywhere in the world.
+- Mound of Dirt hint corrected: it lies on the ledge north of the camp, not east of it.
+- Steps that only name a zone no longer count as reached while you are outside that zone, so the
+  "Nobody here?" hint no longer appears there.
+- The arrow hides its empty dial when there is no target.
+
 ## 2.3.0 (2026-11-12)
 
 - New look: graphite panel with hairlines instead of rounded cards, Barlow type (shipped with the addon,

@@ -131,25 +131,10 @@ end
 -- Karte neben dem Fenster
 -------------------------------------------------------------------------------
 -- Ruhiger Symbol-Knopf (Pfeil links oder rechts): ohne Fläche, beim Darüberfahren die erhöhte Fläche
+-- Symbol-Knopf aus dem gemeinsamen Baukasten (Kit.lua, Hausstil 1.2.0)
 local function GlyphButton(parent, glyph, onClick)
-    local b = CreateFrame("Button", nil, parent)
-    b:SetSize(22, 22)
-    b.bg = ns.Round(b, "round", ns.Theme.radius.control, C.card, "BACKGROUND")
-    b.bg:SetShown(false)
-    b.glyph = b:CreateTexture(nil, "ARTWORK")
-    b.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
-    b.glyph:SetSize(14, 14)
-    b.glyph:SetPoint("CENTER")
-    b.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
+    local b = ns.IconButton(parent, glyph, 24)
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self)
-        self.bg:SetShown(true)
-        self.glyph:SetVertexColor(C.text[1], C.text[2], C.text[3])
-    end)
-    b:SetScript("OnLeave", function(self)
-        self.bg:SetShown(false)
-        self.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
-    end)
     return b
 end
 
