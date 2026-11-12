@@ -129,6 +129,9 @@ local function Handle(msg)
             print(ns.PREFIX .. ns.F("Events missing in this client: %s", table.concat(ns.missingEvents, ", ")))
         end
         if ns.questieMissing then print(ns.PREFIX .. L["Questie is not loaded, quest markers stay off."]) end
+        if ns.questieIncompatible then
+            print(ns.PREFIX .. ns.F("This Questie version is not supported, quest markers stay off (%s).", ns.questieIncompatible))
+        end
     else
         print(ns.PREFIX .. L["/ultima [options | arrow | routes | auto | quests | talents | border | hints | language | reset | status | debug]"])
     end

@@ -92,6 +92,34 @@ local function Approach(current, target, dt)
     return current + (target - current) * k
 end
 
+-- Balken gleiten weich zum Ziel. Sind beide angekommen, hängt sich der Handler ab; RenderHeader hängt
+-- ihn bei jedem neuen Ziel wieder an (sonst liefe er jedes Bild weiter, auch ohne Bewegung).
+local SETTLED = 0.001
+local function Slide(_, dt)
+    local w = panel.xp:GetWidth()
+    if not (w and w > 0 and panel.xpTarget) then return end
+    local xpTarget, routeTarget = panel.xpTarget, panel.routeTarget or 0
+    xpShown = Approach(xpShown, xpTarget, dt)
+    routeShown = Approach(routeShown, routeTarget, dt)
+    local settled = math.abs(xpTarget - xpShown) < SETTLED and math.abs(routeTarget - routeShown) < SETTLED
+    if settled then xpShown, routeShown = xpTarget, routeTarget end
+    panel.xpFill:SetWidth(math.max(8, w * xpShown))
+    panel.rest:SetWidth(math.max(8, w * (panel.restTarget or 0)))
+    panel.rest:SetShown((panel.restTarget or 0) > xpTarget + 0.005)
+    panel.routeFill:SetWidth(math.max(3, panel.route:GetWidth() * routeShown))
+    if settled then
+        panel:SetScript("OnUpdate", nil)
+        panel.sliding = false
+    end
+end
+
+local function StartSlide()
+    if panel and not panel.sliding then
+        panel.sliding = true
+        panel:SetScript("OnUpdate", Slide)
+    end
+end
+
 -------------------------------------------------------------------------------
 -- Runde Knoepfe mit Glyphe
 -------------------------------------------------------------------------------
@@ -496,6 +524,7 @@ local function RenderHeader(view)
         panel.xpLeft:SetText(ns.L["Max level"])
         panel.xpRight:SetText("")
     end
+    StartSlide()
     -- Eine Zeile, zwei Texte: rechts "Erholt" höchstens die halbe Breite, links der Rest mit 10 px Abstand
     local full = WIDTH - 2 * PAD
     ns.Fit(panel.xpRight, full / 2, 9) -- rechtsbündig, Anker rechts: die Feldbreite stört nicht
@@ -924,18 +953,9 @@ local function Build()
         ns.ApplyPanelAlpha()
     end)
 
-    -- Balken gleiten weich; der Inhalt wird bei jeder Auswertung (VIEW) neu gezeichnet
-    panel:SetScript("OnUpdate", function(_, dt)
-        local w = panel.xp:GetWidth()
-        if w and w > 0 and panel.xpTarget then
-            xpShown = Approach(xpShown, panel.xpTarget, dt)
-            panel.xpFill:SetWidth(math.max(8, w * xpShown))
-            panel.rest:SetWidth(math.max(8, w * (panel.restTarget or 0)))
-            panel.rest:SetShown((panel.restTarget or 0) > (panel.xpTarget or 0) + 0.005)
-            routeShown = Approach(routeShown, panel.routeTarget or 0, dt)
-            panel.routeFill:SetWidth(math.max(3, panel.route:GetWidth() * routeShown))
-        end
-    end)
+    -- Balken gleiten weich (Slide, hängt sich nach Ankunft ab); der Inhalt wird bei jeder Auswertung
+    -- (VIEW) neu gezeichnet
+    StartSlide()
     ns.panel = panel
     Render()
 end

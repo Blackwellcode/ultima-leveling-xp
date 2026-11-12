@@ -682,5 +682,51 @@ for _, code in ipairs(ns.LANGUAGES) do
 end
 ns.cdb.talentBuild = nil
 ns.db.lang = "deDE"; ns.ApplyLanguage()
+
+-- Ereignisbus: ein fehlerhafter Listener stoppt die übrigen nicht und wird einmal gemeldet
+local busHits, busOut = 0, #out
+ns.On("TEST_BUS", function() error("kaputt") end)
+ns.On("TEST_BUS", function(v) busHits = busHits + v end)
+ns.Fire("TEST_BUS", 2); ns.Fire("TEST_BUS", 3)
+local busMsgs = 0
+for i = busOut + 1, #out do if out[i]:find("kaputt", 1, true) then busMsgs = busMsgs + 1 end end
+check("Ereignisbus: Fehler stoppt andere Listener nicht", busHits == 5, tostring(busHits))
+check("Ereignisbus: Fehler einmal gemeldet", busMsgs == 1, busMsgs .. " Meldungen")
+
+-- Balken: OnUpdate hängt sich nach Ankunft ab und bei neuem Ziel wieder an
+ns.Update()
+check("Balken: Gleiten aktiv nach neuem Ziel", p._OnUpdate ~= nil)
+for _ = 1, 3 do if p._OnUpdate then p._OnUpdate(p, 1) end end
+check("Balken: OnUpdate nach Ankunft entfernt", p._OnUpdate == nil)
+ns.Update()
+check("Balken: neues Rendern hängt wieder an", p._OnUpdate ~= nil)
+
+-- Wegnetz: der Aufbau-Treiber hängt nur, solange gebaut wird
+ns.Paths.Build()
+local driver
+for _, f in ipairs(created) do
+  if f._OnUpdate and debug.getinfo(f._OnUpdate, "S").source:find("Paths.lua", 1, true) then driver = f end
+end
+check("Wegnetz: Treiber beim Aufbau angehängt", driver ~= nil)
+if driver then driver._OnUpdate(driver) end
+check("Wegnetz: Treiber nach Aufbau entfernt", driver ~= nil and driver._OnUpdate == nil and ns.Paths.IsReady())
+
+-- QuestSource: passende Questie-Struktur liefert Ziele, eine geänderte schaltet die Quelle ab statt zu werfen
+local origLoaded = C_AddOns.IsAddOnLoaded
+C_AddOns.IsAddOnLoaded = function(n) return n == "Questie" end
+QuestieLoader = { ImportModule = function() return { lookupByKey = {
+  m_42 = { { objective = { Update = function() end, Completed = false, Needed = 5, Collected = 2 } } },
+  m_43 = { { objective = { Update = function() error("struct changed") end } } } } } end }
+ns.QuestSource.Attach()
+local qFirst = ns.QuestSource.Objectives("42")
+check("QuestSource: Ziel aus Questie gelesen", qFirst and qFirst.Needed == 5)
+local qBad = ns.QuestSource.Objectives("43")
+check("QuestSource: fremde Struktur schaltet ab", qBad == nil and type(ns.questieIncompatible) == "string"
+  and ns.questieIncompatible:find("struct changed", 1, true) ~= nil, tostring(ns.questieIncompatible))
+check("QuestSource: danach keine Abfragen mehr", ns.QuestSource.Objectives("42") == nil)
+C_AddOns.IsAddOnLoaded = origLoaded
+QuestieLoader = nil
+ns.questieIncompatible = nil
+
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)

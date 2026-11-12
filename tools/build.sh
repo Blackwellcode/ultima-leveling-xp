@@ -14,7 +14,7 @@ cd "$ROOT"
 DIST="$ROOT/dist"
 ADDONS_WIN="${ULTIMA_ADDONS:-E:\\World of Warcraft\\_forever_\\Interface\\AddOns}"
 NAME=UltimaLevelingXP
-VERSION=2.2.2
+VERSION=2.2.3
 DEPLOY=0; PACKAGE=0
 for a in "$@"; do
     case "$a" in
@@ -42,14 +42,20 @@ echo "luac ok: $(find src -name '*.lua' | wc -l) Dateien"
 LUA52=$(grep -nE '(^|[^[:alnum:]_])goto[[:space:]]+[[:alpha:]_]|::[[:alpha:]_][[:alnum:]_]*::|[^-/]//[^/]|[[:alnum:]_)] *(<<|>>) *[[:alnum:]_(]|utf8\.|table\.(unpack|pack)|<(const|close)>' $(find src -name '*.lua') | grep -vE '^[^:]+:[0-9]+:[[:space:]]*--' || true)
 [ -z "$LUA52" ] || { echo "$LUA52"; fail "Sprachmittel ab Lua 5.2 in src (das Spiel nutzt Lua 5.1)"; }
 echo "Lua 5.1: keine Sprachmittel ab 5.2 gefunden"
+# Testlogs im Projekt (dist/.logs, ignoriert), nicht im System-Temp
+LOGS="$DIST/.logs"
+mkdir -p "$LOGS"
 for t in test-engine test-ui test-locale test-talents test-paths; do
-    lua "tools/$t.lua" > "/tmp/ultima-$t.log" 2>&1 || { cat "/tmp/ultima-$t.log"; fail "$t"; }
-    echo "$t ok: $(grep -E ' OK( |$)' "/tmp/ultima-$t.log" | grep -cv '^Alle') Pruefungen"
-    rm -f "/tmp/ultima-$t.log"
+    lua "tools/$t.lua" > "$LOGS/$t.log" 2>&1 || { cat "$LOGS/$t.log"; fail "$t"; }
+    echo "$t ok: $(grep -E ' OK( |$)' "$LOGS/$t.log" | grep -cv '^Alle') Pruefungen"
+    rm -f "$LOGS/$t.log"
 done
+rmdir "$LOGS" 2>/dev/null || true
 
 # 3. Hauptaddon
-rm -rf "$DIST"
+# Nur die Ausgaben dieses Skripts entfernen (Addon-Ordner und Archive), nie andere Dateien in dist/
+[ "$(basename "$DIST")" = dist ] && [ -d "$ROOT/src" ] || fail "unerwarteter Ausgabeordner: $DIST"
+rm -rf "${DIST:?}/$NAME" "${DIST:?}/${NAME}"_* "${DIST:?}/${NAME}.zip" "${DIST:?}/${NAME}-${VERSION}.zip"
 MAIN="$DIST/$NAME"
 mkdir -p "$MAIN/Textures"
 cp -r libs "$MAIN/libs"

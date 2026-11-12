@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.2.3 (2026-11-12)
+
+- An error in one part of the addon no longer stops the others from reacting to the same event; it is
+  shown once in chat (and in BugSack) instead.
+- The XP and route bars stop updating every frame once they reach their value; the path network builder
+  switches itself off when it is done.
+- Quest log changes of group members no longer trigger a route update.
+- Quest markers read Questie through a checked adapter: an unsupported Questie version switches the
+  markers off and `/ultima status` names the reason. If EllesmereUI nameplates change their layout, the
+  markers fall back to the standard nameplates.
+- Language options say which client languages still lack route hints or NPC names.
+- German: "Gegenstand" and "Lager" instead of English terms.
+
 ## 2.2.2 (2026-11-11)
 
 - Author name is now Blackwell Code (addon list, license).

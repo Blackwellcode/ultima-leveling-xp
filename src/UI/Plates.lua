@@ -9,7 +9,6 @@ local QUEST_ICON, QUEST_FONT = 20, 15
 local DARK = 0.067 -- Rahmenfarbe von EllesmereUI für Einheiten ohne Levelfarbe
 
 local db
-local questTooltips
 local plateWidgets = {}
 local targetWidget
 
@@ -56,6 +55,62 @@ local function QuestieIcon(iconType)
     return Questie.icons.loot
 end
 
+-- QuestSource: die einzige Stelle, die Questie-Interna kennt (QuestieTooltips.lookupByKey, objective:Update).
+-- Die Struktur wird bei jeder Abfrage geprüft und jede Abfrage läuft geschützt. Passt sie nicht (andere
+-- Questie-Version), schaltet sich die Quelle ab, Questmarker bleiben aus und /ultima status nennt den Grund,
+-- statt dass jede Namensplakette einen Fehler wirft.
+local QuestSource = {}
+local questTooltips
+
+function QuestSource.Attach()
+    if not (C_AddOns.IsAddOnLoaded("Questie") and QuestieLoader and type(QuestieLoader.ImportModule) == "function") then
+        ns.questieMissing = true -- nur unter /ultima status melden, nicht bei jedem Login
+        return
+    end
+    local ok, module = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieTooltips")
+    if ok and type(module) == "table" then
+        questTooltips = module
+    else
+        QuestSource.Disable(ok and "QuestieTooltips missing" or tostring(module))
+    end
+end
+
+function QuestSource.Disable(reason)
+    questTooltips = nil
+    ns.questieIncompatible = reason
+end
+
+-- Offene Ziele eines NPC: erstes Ziel und Zahl weiterer. lookupByKey fehlt kurz nach dem Login noch
+-- (Questie baut es beim Start auf): dann einfach nichts, ohne Abschalten.
+local function ReadObjectives(npcId)
+    local lookup = questTooltips.lookupByKey
+    if type(lookup) ~= "table" then return nil, 0 end
+    local entries = lookup["m_" .. npcId]
+    if type(entries) ~= "table" then return nil, 0 end
+    local first, extra = nil, 0
+    for _, entry in pairs(entries) do
+        local obj = type(entry) == "table" and entry.objective
+        if type(obj) == "table" and type(obj.Update) == "function" then
+            obj:Update()
+            if not obj.Completed then
+                if first then extra = extra + 1 else first = obj end
+            end
+        end
+    end
+    return first, extra
+end
+
+function QuestSource.Objectives(npcId)
+    if not questTooltips then return nil, 0 end
+    local ok, first, extra = pcall(ReadObjectives, npcId)
+    if not ok then
+        QuestSource.Disable(tostring(first))
+        return nil, 0
+    end
+    return first, extra
+end
+ns.QuestSource = QuestSource
+
 -- Liefert Icon, Fortschrittstext und Zahl weiterer offener Ziele für eine NPC-Einheit.
 local function QuestInfo(unit)
     if not questTooltips then return nil end
@@ -63,24 +118,12 @@ local function QuestInfo(unit)
     if not guid or IsSecret(guid) then return nil end
     local unitType, _, _, _, _, npcId = strsplit("-", guid)
     if (unitType ~= "Creature" and unitType ~= "Vehicle") or not npcId then return nil end
-    local entries = questTooltips.lookupByKey["m_" .. npcId]
-    if not entries then return nil end
-
-    local first, extra = nil, 0
-    for _, entry in pairs(entries) do
-        local obj = entry.objective
-        if obj and obj.Update then
-            obj:Update()
-            if not obj.Completed then
-                if first then extra = extra + 1 else first = obj end
-            end
-        end
-    end
+    local first, extra = QuestSource.Objectives(npcId)
     if not first then return nil end
 
     local text = ""
-    if first.Needed and first.Needed > 0 then
-        text = (first.Collected or 0) .. "/" .. first.Needed
+    if type(first.Needed) == "number" and first.Needed > 0 then
+        text = (tonumber(first.Collected) or 0) .. "/" .. first.Needed
     end
     if extra > 0 then text = text .. " +" .. extra end
     return QuestieIcon(first.Icon), text
@@ -224,10 +267,13 @@ end
 -------------------------------------------------------------------------------
 -- Nameplates
 -------------------------------------------------------------------------------
+-- EllesmereUI-Plakette, falls deren Struktur passt; sonst die Blizzard-Namensplakette
 local function PlateAnchor(unit)
-    local ns = _G.EllesmereNameplates_NS
-    local plate = ns and ns.plates and ns.plates[unit]
-    if plate and plate.health then return plate.health end
+    local ens = _G.EllesmereNameplates_NS
+    local plates = type(ens) == "table" and ens.plates
+    local plate = type(plates) == "table" and plates[unit]
+    local health = type(plate) == "table" and plate.health
+    if type(health) == "table" and type(health.GetObjectType) == "function" then return health end
     return C_NamePlate.GetNamePlateForUnit(unit)
 end
 
@@ -307,11 +353,7 @@ events:SetScript("OnEvent", function(_, event, unit)
     if event == "PLAYER_LOGIN" then
         db = ns.db.questPlates
         ownsPlateBorder = C_AddOns.IsAddOnLoaded("EllesmereUINameplates") and true or false
-        if C_AddOns.IsAddOnLoaded("Questie") and QuestieLoader then
-            questTooltips = QuestieLoader:ImportModule("QuestieTooltips")
-        else
-            ns.questieMissing = true -- nur unter /ultima status melden, nicht bei jedem Login
-        end
+        QuestSource.Attach()
         events:RegisterEvent("NAME_PLATE_UNIT_ADDED")
         events:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
         events:RegisterEvent("PLAYER_TARGET_CHANGED")

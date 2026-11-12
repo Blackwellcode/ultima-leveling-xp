@@ -162,7 +162,7 @@ local EVENTS = {
     "PLAYER_ENTERING_WORLD", "QUEST_ACCEPTED", "QUEST_TURNED_IN", "QUEST_REMOVED", "QUEST_LOG_UPDATE",
     "PLAYER_LEVEL_UP", "PLAYER_XP_UPDATE", "BAG_UPDATE_DELAYED", "ZONE_CHANGED", "ZONE_CHANGED_NEW_AREA",
     "ZONE_CHANGED_INDOORS", "SPELLS_CHANGED", "HEARTHSTONE_BOUND", "UI_INFO_MESSAGE",
-    "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "GOSSIP_SHOW", "GET_ITEM_INFO_RECEIVED", "QUEST_WATCH_UPDATE", "UNIT_QUEST_LOG_CHANGED",
+    "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED", "GOSSIP_SHOW", "GET_ITEM_INFO_RECEIVED", "QUEST_WATCH_UPDATE",
 }
 
 ns.On("READY", function()
@@ -171,6 +171,10 @@ ns.On("READY", function()
     for _, event in ipairs(EVENTS) do
         local ok = pcall(frame.RegisterEvent, frame, event)
         if not ok then ns.missingEvents[#ns.missingEvents + 1] = event end
+    end
+    -- Questlog-Änderungen nur des Spielers (sonst feuert jedes Gruppenmitglied eine Auswertung)
+    if not pcall(frame.RegisterUnitEvent, frame, "UNIT_QUEST_LOG_CHANGED", "player") then
+        ns.missingEvents[#ns.missingEvents + 1] = "UNIT_QUEST_LOG_CHANGED"
     end
     frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
 end)

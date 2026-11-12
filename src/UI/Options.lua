@@ -135,7 +135,7 @@ local CATEGORIES = {
     } },
     { key = "lang", label = "Language", options = {
         { type = "cycle", path = "lang", label = "Interface language", values = LanguageValues, chosen = "langChosen" },
-        { type = "note", label = "Route hints and NPC names follow the language of your game client." },
+        { type = "note", label = "Route hints and NPC names follow your game client's language where a translation exists. Missing parts stay English: route hints in Korean, Russian, Traditional Chinese and Italian, NPC names in Portuguese and Italian, some German route hints." },
     } },
 }
 ns.OPTION_CATEGORIES = CATEGORIES

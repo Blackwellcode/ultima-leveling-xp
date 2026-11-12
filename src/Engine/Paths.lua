@@ -103,32 +103,32 @@ local function BuildAll(batch)
     ready = true
 end
 
+-- Aufbau über OnUpdate mit Zeitbudget (4 ms je Bild). Der Handler hängt nur, solange gebaut wird.
+local driver = CreateFrame and CreateFrame("Frame") or nil
+local function Drive(self)
+    local start = debugprofilestop()
+    while building and debugprofilestop() - start < 4 do
+        local ok, err = coroutine.resume(building)
+        if not ok then
+            print(ns.WARN .. ns.F("Path network build failed: %s", tostring(err)))
+            building = nil
+        elseif coroutine.status(building) == "dead" then
+            building = nil
+        end
+    end
+    if not building then self:SetScript("OnUpdate", nil) end
+end
+
 -- Startet den Aufbau. sync: sofort (Tests); sonst läuft er über OnUpdate mit Zeitbudget.
 function Paths.Build(sync)
     graph, ready = {}, false
     Paths.stats = { nodes = 0, edges = 0, links = 0 }
     if sync then BuildAll(nil) return end
     building = coroutine.create(function() BuildAll(300) end)
+    if driver then driver:SetScript("OnUpdate", Drive) end
 end
 
 function Paths.IsReady() return ready end
-
-if CreateFrame then
-    local driver = CreateFrame("Frame")
-    driver:SetScript("OnUpdate", function()
-        if not building then return end
-        local start = debugprofilestop()
-        while building and debugprofilestop() - start < 4 do
-            local ok, err = coroutine.resume(building)
-            if not ok then
-                print(ns.WARN .. ns.F("Path network build failed: %s", tostring(err)))
-                building = nil
-            elseif coroutine.status(building) == "dead" then
-                building = nil
-            end
-        end
-    end)
-end
 
 -- Die nächsten Knoten im Umkreis SNAP, nach Entfernung sortiert, höchstens CANDIDATES
 local function Nearby(g, x, y)

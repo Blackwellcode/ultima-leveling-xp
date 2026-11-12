@@ -69,8 +69,26 @@ function ns.On(name, fn)
     listeners[name] = listeners[name] or {}
     table.insert(listeners[name], fn)
 end
+-- Jeder Listener läuft geschützt: ein Fehler in einem Modul bricht die übrigen Listener nicht ab. Er
+-- erscheint einmal je Meldung im Chat und geht an den Fehler-Handler (BugSack), statt still zu verschwinden.
+local busReported = {}
+local function ReportListenerError(name, err)
+    local text = tostring(err)
+    local key = name .. text
+    if busReported[key] then return end
+    busReported[key] = true
+    print(ns.WARN .. name .. ": " .. text)
+    local handler = geterrorhandler and geterrorhandler()
+    if handler then pcall(handler, text) end
+end
+
 function ns.Fire(name, ...)
-    for _, fn in ipairs(listeners[name] or {}) do fn(...) end
+    local list = listeners[name]
+    if not list then return end
+    for _, fn in ipairs(list) do
+        local ok, err = pcall(fn, ...)
+        if not ok then ReportListenerError(name, err) end
+    end
 end
 
 -------------------------------------------------------------------------------
