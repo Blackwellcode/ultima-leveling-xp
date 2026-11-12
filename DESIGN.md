@@ -1,3 +1,7 @@
+house: blackwellcode
+
+Ab 2026-11-12 gilt der Blackwellcode-Hausstil (Skill `masterwork`, Datei `house/blackwellcode.md`, Richtung "Rail"). Design v2 unten beschreibt nur noch den Bestand bis zur Umstellung.
+
 # Ultima – Design v2 ("Keynote")
 
 Stand: 2026-11-09. Auftrag: rund statt eckig, deutlich hochwertiger, Apple-Keynote-Anmutung.

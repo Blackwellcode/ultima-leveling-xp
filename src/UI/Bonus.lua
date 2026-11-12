@@ -23,11 +23,11 @@ local ENGLISH = { food = "Well Fed", bag = "Well-Rested", camp = "Camp Benefits"
 local LEARN = { bag = true, camp = true } -- abweichende IDs im Spiel merken (z. B. nach einem Patch)
 
 local COLORS = {
-    ok = { 0.35, 0.85, 0.40 },
-    warn = { 1.00, 0.82, 0.20 },
-    bad = { 1.00, 0.25, 0.20 },
-    off = { 0.50, 0.50, 0.50 },
-    rest = { 0.40, 0.65, 1.00 },
+    ok = ns.COLORS.ok,
+    warn = ns.COLORS.warn,
+    bad = ns.COLORS.bad,
+    off = ns.COLORS.text3,
+    rest = ns.COLORS.rest,
 }
 B.COLORS = COLORS
 

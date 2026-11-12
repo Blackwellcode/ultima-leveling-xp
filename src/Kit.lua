@@ -1,39 +1,48 @@
 -- Kit: gemeinsame Bausteine für scharfe Darstellung und lose Kopplung der Module.
+--   Tokens - Farben, Schriften und Maße kommen aus Theme.lua (Hausstil Blackwellcode)
 --   Einpassen - Texte bleiben in ihrer Breite (Fit), Schutz für Bild-Schleifen (Guard)
---   Schrift - EllesmereUI-Schrift, sonst Standardschrift, mit weichem Schatten
+--   Schrift - Barlow aus dem eigenen media-Ordner, für Kyrillisch und CJK die Client-Schrift
 local _, ns = ...
 local U = ns
+local TH = ns.Theme
 
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 U.WHITE = WHITE
--- Gestaltungs-Tokens laut DESIGN.md
-U.ACCENT = { 0.20, 0.84, 0.69 }       -- #33D6B0
-U.ACCENT2 = { 0.23, 0.65, 1.00 }      -- #3BA7FF
+-- Kurznamen der Theme-Tokens für den Frame-Code. Genau ein Akzent (Glut): er markiert, was "jetzt" ist.
+U.ACCENT = TH.color.accent
 U.COLORS = {
-    panel = { 0.055, 0.059, 0.071, 0.88 },
-    card = { 1, 1, 1, 0.045 },
-    cardBorder = { 1, 1, 1, 0.07 },
-    text = { 0.95, 0.95, 0.96 },
-    text2 = { 0.63, 0.64, 0.68 },
-    text3 = { 0.42, 0.44, 0.47 },
-    ok = { 0.29, 0.87, 0.50 },
-    warn = { 0.98, 0.80, 0.08 },
-    bad = { 1.00, 0.42, 0.37 },
+    panel = TH.color.surface,
+    card = TH.color.surface2,
+    cardBorder = TH.color.rule,
+    text = TH.color.ink,
+    text2 = TH.color.ink2,
+    text3 = TH.color.muted,
+    ok = TH.color.good,
+    warn = TH.color.warn,
+    bad = TH.color.bad,
+    -- Erholt-Anteil der XP: die Farbe des Spiels für Erholt, keine Hausfarbe
     rest = { 0.38, 0.65, 0.98 },
 }
+
+-- Farbe als Farbcode für Texte: U.Hex(U.ACCENT) -> "ff6a3d"
+function U.Hex(c)
+    return ("%02x%02x%02x"):format(math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
 
 -------------------------------------------------------------------------------
 -- Schrift
 -------------------------------------------------------------------------------
--- Fira Sans aus EllesmereUI in drei Schnitten (Light, Medium, Bold); ohne EllesmereUI die Standardschrift.
-local FIRA = "Interface\\AddOns\\EllesmereUI\\media\\fonts\\FiraSans %s.ttf"
+-- Rollen statt Schnitte: "Bold" = Anzeige (Barlow Condensed SemiBold, Titel, Schrittsatz, Zahlen),
+-- "Medium" und "Light" = Text (Barlow Medium). Barlow deckt nur Lateinisch ab: Russisch nutzt die
+-- kyrillische Spielschrift, Koreanisch und Chinesisch die Client-Schrift.
+local CYRILLIC = "Fonts\\FRIZQT___CYR.TTF"
 function U.FontPath(weight)
-    -- Koreanisch und Chinesisch: nur die Client-Schrift hat diese Zeichen
-    if ns.CJK[ns.ClientLocale()] or ns.CJK[ns.LANG] then return STANDARD_TEXT_FONT end
-    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("EllesmereUI") then
-        return FIRA:format(weight or "Medium")
-    end
-    return STANDARD_TEXT_FONT
+    local client = ns.ClientLocale()
+    if ns.CJK[client] or ns.CJK[ns.LANG] then return STANDARD_TEXT_FONT end
+    if client == "ruRU" then return STANDARD_TEXT_FONT end
+    if ns.LANG == "ruRU" then return CYRILLIC end
+    if weight == "Bold" then return TH.font.display end
+    return TH.font.body
 end
 
 -- Ganzzahlige Groessen und Schatten statt Outline bleiben auch klein gestochen scharf.
@@ -53,7 +62,7 @@ function U.EnsureFonts()
             fs:SetFont(STANDARD_TEXT_FONT, size, "")
             if not U.fontWarned then
                 U.fontWarned = true
-                print("|cffff4040Ultima:|r " .. ns.F("Font %s could not be loaded, using the default font.", U.FontPath(l.weight)))
+                print(ns.WARN .. ns.F("Font %s could not be loaded, using the default font.", U.FontPath(l.weight)))
             end
         end
         local text = fs:GetText()
@@ -72,8 +81,8 @@ function U.Label(parent, size, color, layer, weight)
     fs:SetFont(U.FontPath(weight), size, "")
     labels[#labels + 1] = { fs = fs, weight = weight, size = size }
     fs.baseSize = size -- gewünschte Größe; GetFont kann anfangs noch die kleinere Vorlagen-Größe melden
-    fs:SetShadowColor(0, 0, 0, 0.75)
-    fs:SetShadowOffset(1, -1)
+    -- Flache Schrift auf deckender Graphitfläche: kein Schatten (die Spielvorlage bringt einen mit)
+    fs:SetShadowOffset(0, 0)
     local c = color or U.COLORS.text
     fs:SetTextColor(c[1], c[2], c[3], c[4] or 1)
     fs:SetJustifyH("LEFT")
@@ -114,7 +123,7 @@ function U.Guard(label, fn, ...)
         local key = label .. tostring(err)
         if not reported[key] then
             reported[key] = true
-            print("|cffff4040Ultima:|r " .. label .. ": " .. tostring(err))
+            print(ns.WARN .. label .. ": " .. tostring(err))
         end
     end
     return ok
@@ -243,8 +252,8 @@ function U.FadeIn(frame, duration)
     local a = group:CreateAnimation("Alpha")
     a:SetFromAlpha(0)
     a:SetToAlpha(1)
-    a:SetDuration(duration or 0.25)
-    a:SetSmoothing("OUT")
+    a:SetDuration(duration or TH.motion.base)
+    a:SetSmoothing("IN_OUT")
     return function() group:Stop(); group:Play() end
 end
 

@@ -34,7 +34,8 @@ local function Pin(kind)
     if kind == "target" then
         f:SetSize(22, 22)
         f.tex:SetTexture(ns.TEX .. "ulx_logo-64")
-        f.tex:SetVertexColor(1, 1, 1, 1)
+        local n = ns.Theme.color.neutral
+        f.tex:SetVertexColor(n[1], n[2], n[3], 1)
     else
         f:SetSize(9, 9)
         f.tex:SetTexture(ns.TEX .. "ulx-circle")

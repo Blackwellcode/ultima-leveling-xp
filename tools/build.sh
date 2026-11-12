@@ -14,7 +14,7 @@ cd "$ROOT"
 DIST="$ROOT/dist"
 ADDONS_WIN="${ULTIMA_ADDONS:-E:\\World of Warcraft\\_forever_\\Interface\\AddOns}"
 NAME=UltimaLevelingXP
-VERSION=2.2.3
+VERSION=2.3.0
 DEPLOY=0; PACKAGE=0
 for a in "$@"; do
     case "$a" in
@@ -61,12 +61,15 @@ mkdir -p "$MAIN/Textures"
 cp -r libs "$MAIN/libs"
 cp -r src/. "$MAIN/"
 cp assets/branding/*.tga "$MAIN/Textures/"
+# Schriften des Hausstils (Barlow, SIL OFL) mit Lizenztext im media-Ordner
+mkdir -p "$MAIN/media"
+cp assets/fonts/BarlowCondensed-SemiBold.ttf assets/fonts/Barlow-Medium.ttf assets/fonts/OFL.txt "$MAIN/media/"
 mkdir -p "$MAIN/Data" && cp data/Travel.lua data/Flights.lua data/Talents.lua "$MAIN/Data/"
 cp assets/CREDITS.txt assets/LICENSE-DATA.txt assets/LICENSE.txt "$MAIN/"
 {
     cat <<EOF
 ## Interface: 16001
-## Title: |cff33d6b0Ultima|r Leveling XP
+## Title: |cffff6a3dUltima|r Leveling XP
 ## Notes: Leveling companion for WoW Forever: routes, arrow, travel planner, bonus tracking, leveling talents.
 ## Notes-deDE: Leveling-Begleiter für WoW Forever: Routen, Pfeil, Reiseplaner, Boni im Blick, Leveling-Talente.
 ## Author: Blackwell Code
@@ -95,6 +98,7 @@ Locale\\ruRU.lua
 Locale\\koKR.lua
 Locale\\zhCN.lua
 Locale\\zhTW.lua
+Theme.lua
 Kit.lua
 Settings.lua
 Engine\\Conditions.lua
@@ -134,7 +138,7 @@ for f in A H; do
     cp assets/CREDITS.txt assets/LICENSE-DATA.txt "$DATA/"
     cat > "$DATA/${NAME}_$f.toc" <<EOF
 ## Interface: 16001
-## Title: |cff33d6b0Ultima|r Leveling XP - Routes $label
+## Title: |cffff6a3dUltima|r Leveling XP - Routes $label
 ## Notes: Route data, loaded by Ultima Leveling XP on demand.
 ## Author: Blackwell Code
 ## Version: $VERSION
@@ -156,7 +160,7 @@ for f in data/Text_*.lua; do
     cp assets/CREDITS.txt assets/LICENSE-DATA.txt "$DATA/"
     cat > "$DATA/${NAME}_$loc.toc" <<EOF
 ## Interface: 16001
-## Title: |cff33d6b0Ultima|r Leveling XP - $loc
+## Title: |cffff6a3dUltima|r Leveling XP - $loc
 ## Notes: Route texts and NPC names for $loc clients, loaded by Ultima Leveling XP on demand.
 ## Author: Blackwell Code
 ## Version: $VERSION

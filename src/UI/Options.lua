@@ -6,6 +6,7 @@
 local _, ns = ...
 local L = ns.L
 local C, A1 = ns.COLORS, ns.ACCENT
+local TH = ns.Theme
 
 local WIDTH, HEIGHT, SIDEBAR, HEADER, FOOTER = 680, 500, 172, 44, 48
 local ROW, ROW_HINT = 30, 44
@@ -153,29 +154,40 @@ end
 local function GlyphButton(parent, glyph, onClick)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(24, 24)
-    b.bg = ns.Round(b, "circle", 12, { 1, 1, 1, 0.07 }, "BACKGROUND")
+    -- ruhiger Symbol-Knopf: ohne Fläche, beim Darüberfahren die erhöhte Fläche
+    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
+    b.bg:SetShown(false)
     b.glyph = b:CreateTexture(nil, "ARTWORK")
     b.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
     b.glyph:SetSize(14, 14)
     b.glyph:SetPoint("CENTER")
-    b.glyph:SetVertexColor(C.text2[1], C.text2[2], C.text2[3])
+    b.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self) self.bg:SetColor(A1[1], A1[2], A1[3], 0.25) end)
-    b:SetScript("OnLeave", function(self) self.bg:SetColor(1, 1, 1, 0.07) end)
+    b:SetScript("OnEnter", function(self)
+        self.bg:SetShown(true)
+        self.glyph:SetVertexColor(C.text[1], C.text[2], C.text[3])
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.bg:SetShown(false)
+        self.glyph:SetVertexColor(C.text3[1], C.text3[2], C.text3[3])
+    end)
     return b
 end
 
 local function TextButton(parent, text, onClick)
     local b = CreateFrame("Button", nil, parent)
     b:SetHeight(26)
-    b.bg = ns.Round(b, "circle", 13, { 1, 1, 1, 0.07 }, "BACKGROUND")
-    b.text = ns.Label(b, 12, C.text, "OVERLAY", "Medium")
+    -- ruhiger Text-Knopf: Haarlinien-Rand, beim Darüberfahren die erhöhte Fläche
+    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
+    b.bg:SetShown(false)
+    ns.Round(b, "ring", TH.radius.control, C.cardBorder, "BORDER")
+    b.text = ns.Label(b, TH.size.small, C.text, "OVERLAY", "Medium")
     b.text:SetPoint("CENTER")
     b.text:SetText(text)
     b:SetWidth(math.max(90, ns.TextWidth(b.text) + 28))
     b:SetScript("OnClick", onClick)
-    b:SetScript("OnEnter", function(self) self.bg:SetColor(A1[1], A1[2], A1[3], 0.25) end)
-    b:SetScript("OnLeave", function(self) self.bg:SetColor(1, 1, 1, 0.07) end)
+    b:SetScript("OnEnter", function(self) self.bg:SetShown(true) end)
+    b:SetScript("OnLeave", function(self) self.bg:SetShown(false) end)
     return b
 end
 
@@ -199,9 +211,9 @@ local function BuildRow(page, opt, width)
     local label = opt.raw and opt.label or L[opt.label]
     if opt.type == "header" then
         SetRowHeight(row, 28)
-        row.text = ns.Label(row, 10, A1, "OVERLAY", "Bold")
+        row.text = ns.Label(row, TH.size.heading, C.text, "OVERLAY", "Bold")
         row.text:SetPoint("BOTTOMLEFT", 0, 6)
-        row.text:SetText(label:upper())
+        row.text:SetText(label)
         function row:Refresh() end
         return row
     end
@@ -226,7 +238,7 @@ local function BuildRow(page, opt, width)
         return row
     end
     SetRowHeight(row, opt.hint and ROW_HINT or ROW)
-    row.text = ns.Label(row, 13, C.text, "OVERLAY", "Medium")
+    row.text = ns.Label(row, TH.size.body, C.text, "OVERLAY", "Medium")
     row.text:SetPoint("TOPLEFT", 0, -7)
     row.text:SetText(label)
     ns.Fit(row.text, width - 150, 10)
@@ -240,7 +252,7 @@ local function BuildRow(page, opt, width)
         local sw = CreateFrame("Button", nil, row)
         sw:SetSize(40, 22)
         sw:SetPoint("TOPRIGHT", 0, -4)
-        sw.bg = ns.Round(sw, "circle", 11, { 1, 1, 1, 0.1 }, "BACKGROUND")
+        sw.bg = ns.Round(sw, "circle", 11, C.cardBorder, "BACKGROUND")
         sw.knob = sw:CreateTexture(nil, "ARTWORK")
         sw.knob:SetTexture(ns.TEX .. "ulx-circle")
         sw.knob:SetSize(16, 16)
@@ -256,8 +268,10 @@ local function BuildRow(page, opt, width)
             if opt.invert then on = not on end
             sw.knob:ClearAllPoints()
             sw.knob:SetPoint(on and "RIGHT" or "LEFT", on and -3 or 3, 0)
-            if on then sw.bg:SetColor(A1[1], A1[2], A1[3], 0.85) else sw.bg:SetColor(1, 1, 1, 0.1) end
-            sw.knob:SetVertexColor(1, 1, 1, on and 1 or 0.6)
+            -- an: helle Spur mit Graphit-Knopf; aus: Linienfarbe mit gedämpftem Knopf (Akzent bleibt frei)
+            local track, knob = on and C.text or C.cardBorder, on and TH.color.accentInk or C.text3
+            sw.bg:SetColor(track[1], track[2], track[3], 1)
+            sw.knob:SetVertexColor(knob[1], knob[2], knob[3], 1)
         end
         return row
     end
@@ -328,6 +342,7 @@ local function Select(key)
         local on = category.key == key
         page:SetShown(on)
         button.hl:SetShown(on)
+        button.mark:SetShown(on)
         button.text:SetTextColor(on and C.text[1] or C.text2[1], on and C.text[2] or C.text2[2], on and C.text[3] or C.text2[3])
         if on then
             current = page
@@ -361,18 +376,18 @@ local function Build()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    ns.Round(frame, "shadow", 30, { 0, 0, 0, 0.9 }, "BACKGROUND", -2, 18)
-    ns.Round(frame, "round", 18, { C.panel[1], C.panel[2], C.panel[3], 0.98 }, "BACKGROUND", 0)
-    ns.Round(frame, "ring", 18, C.cardBorder, "BORDER")
+    ns.Round(frame, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -2, 14)
+    ns.Round(frame, "round", TH.radius.panel, C.panel, "BACKGROUND", 0)
+    ns.Round(frame, "ring", TH.radius.panel, C.cardBorder, "BORDER")
     if UISpecialFrames then table.insert(UISpecialFrames, "UltimaOptions") end -- Escape schließt
 
     local logo = frame:CreateTexture(nil, "ARTWORK")
     logo:SetTexture(ns.TEX .. "ulx_logo-64")
     logo:SetSize(26, 26)
     logo:SetPoint("TOPLEFT", 16, -10)
-    local title = ns.Label(frame, 16, C.text, "OVERLAY", "Bold")
+    local title = ns.Label(frame, TH.size.display, C.text, "OVERLAY", "Bold")
     title:SetPoint("LEFT", logo, "RIGHT", 10, 0)
-    title:SetText("Ultima Leveling XP")
+    title:SetText(ns.TITLE)
     local close = GlyphButton(frame, "plus", function() frame:Hide() end)
     close.glyph:SetRotation(math.pi / 4) -- Plus um 45 Grad gedreht = Kreuz
     close:SetPoint("TOPRIGHT", -12, -10)
@@ -381,14 +396,27 @@ local function Build()
     local side = CreateFrame("Frame", nil, frame)
     side:SetPoint("TOPLEFT", 10, -HEADER)
     side:SetSize(SIDEBAR - 10, HEIGHT - HEADER - 12)
-    ns.Round(side, "round", 12, { 1, 1, 1, 0.03 }, "BACKGROUND")
+    -- Seitenleiste ohne eigene Fläche, eine Haarlinie trennt sie von der Seite
+    local sideRule = side:CreateTexture(nil, "BORDER")
+    sideRule:SetTexture(ns.WHITE)
+    sideRule:SetWidth(1)
+    sideRule:SetPoint("TOPRIGHT", 0, 0)
+    sideRule:SetPoint("BOTTOMRIGHT", 0, 0)
+    sideRule:SetVertexColor(C.cardBorder[1], C.cardBorder[2], C.cardBorder[3], 1)
     for i, category in ipairs(CATEGORIES) do
         local b = CreateFrame("Button", nil, side)
         b:SetSize(SIDEBAR - 26, 28)
         b:SetPoint("TOPLEFT", 8, -8 - (i - 1) * 30)
-        b.hl = ns.Round(b, "round", 8, { A1[1], A1[2], A1[3], 0.18 }, "BACKGROUND")
+        -- gewählte Seite: erhöhte Fläche und die Glutmarke links (das "Jetzt" dieses Fensters)
+        b.hl = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
         b.hl:SetShown(false)
-        b.text = ns.Label(b, 13, C.text2, "OVERLAY", "Medium")
+        b.mark = b:CreateTexture(nil, "ARTWORK")
+        b.mark:SetTexture(ns.WHITE)
+        b.mark:SetSize(3, 14)
+        b.mark:SetPoint("LEFT", 0, 0)
+        b.mark:SetVertexColor(A1[1], A1[2], A1[3], 1)
+        b.mark:Hide()
+        b.text = ns.Label(b, TH.size.heading, C.text2, "OVERLAY", "Medium")
         b.text:SetPoint("LEFT", 10, 0)
         b.text:SetText(L[category.label])
         ns.Fit(b.text, SIDEBAR - 46, 10)

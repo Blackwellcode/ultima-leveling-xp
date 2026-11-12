@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.0 (2026-11-12)
+
+- New look: graphite panel with hairlines instead of rounded cards, Barlow type (shipped with the addon,
+  SIL Open Font License), one orange accent that marks what is next.
+- Route progress is a rail of ticks on the left edge of the panel; the orange mark sits on your current step.
+- The current step reads as one large sentence with distance and walking time as figures on the right;
+  further actions show their verb in a column of their own.
+- Bonus tiles became a quiet status strip: label above, value below, a word in orange when you can act.
+- The arrow sits on a round graphite dial with an orange arrowhead, distance large, time small below it.
+- Options window and talent card follow the same style. Labels use sentence case instead of capitals.
+- Russian uses the game's Cyrillic font, Korean and Chinese the client font.
+
 ## 2.2.3 (2026-11-12)
 
 - An error in one part of the addon no longer stops the others from reacting to the same event; it is

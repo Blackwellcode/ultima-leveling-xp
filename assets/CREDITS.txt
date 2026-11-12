@@ -33,3 +33,8 @@ Ultima Leveling XP - Credits and licenses / Danksagung und Lizenzen
    HereBeDragons-2.0      - Nevcairiel; BSD license
    LibDataBroker-1.1      - Tekkub
    LibDBIcon-1.0          - Funkeh / funkydude
+
+4. Fonts / Schriften (unchanged, in media\)
+   Barlow Medium, Barlow Condensed SemiBold - Copyright 2017 The Barlow Project Authors
+   (https://github.com/jpt/barlow), licensed under the SIL Open Font License 1.1
+   (full text in media\OFL.txt).

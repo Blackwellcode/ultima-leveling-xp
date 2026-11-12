@@ -1,99 +1,149 @@
--- Panel im Keynote-Stil (DESIGN.md): runde Glasflaechen, eine Hauptaussage, weiche Bewegung.
---   Kopf      Logo-Kachel, Route, Schritt, Level-Pille
---   XP        Pillen-Balken mit Verlauf und Erholt-Abschnitt
---   REISE     Zeitleiste bei Kontinentwechsel (Faehre)
---   JETZT     Hero-Karte: Handlungen mit Icon-Kachel, Meta-Pillen, Ziel-Balken
---   DANACH    Vorschau
---   Chips     Forever-Boni als Pillen, darunter runde Glyph-Knoepfe
+-- Panel im Hausstil Blackwellcode ("Rail", Theme.lua): Graphit, Haarlinien statt Karten, ein Glutakzent für "jetzt".
+--   Schiene   22-px-Spalte links: ein Strich je Routenschritt, die Glutmarke steht auf dem aktuellen
+--   Kopf      Routenname in Anzeigegröße, Schritt, rechts das Level als Zahl
+--   XP        4-px-Balken, darunter Anteil und Rest
+--   Status    vier Spalten (Boni): Bezeichnung klein, Wert als Wort; geschützte Knöpfe
+--   Reise     Etappen bei Kontinentwechsel
+--   Jetzt     der Schrittsatz groß, weitere Handlungen als Zeilen mit Verb-Spalte
+--   Danach    Vorschau
 local _, ns = ...
 local R, P, T, S = ns.Runner, ns.Progress, ns.Text, ns.State
-local C, A1, A2 = ns.COLORS, ns.ACCENT, ns.ACCENT2
+local C, A1 = ns.COLORS, ns.ACCENT
+local TH = ns.Theme
+local SZ = TH.size
 
-local WIDTH, PAD, INNER = 384, 16, 14
-local FIXED_H = 190 -- feste Höhe des Fensters (Kopf bis Kacheln); die sichtbare Hülle wächst getrennt
-local HEAD_W = WIDTH - 2 * PAD - 52 - 50 -- Kopftext: rechts vom Logo, links von der Level-Pille
-local ICON_TILE, ICON = 30, 20
+local WIDTH = 384
+local RAIL = 22                      -- Schienen-Spalte
+local LEFT, RIGHT = RAIL + 14, 16    -- Innenabstand nach der Schiene und rechts
+local CW = WIDTH - LEFT - RIGHT      -- Inhaltsbreite
+local LEVEL_W = 70                   -- rechter Kopfblock: "Stufe 16"
+local HEAD_W = CW - LEVEL_W
+local VERB_W = 62                    -- Verb-Spalte der Zeilen
+local FIG_W = 64                     -- rechte Zahlen-Spalte (Entfernung, Zeit)
+local FIXED_H = 160 -- feste Höhe des Fensters (Kopf bis Statusleiste); die sichtbare Hülle wächst getrennt
 local MAX_ROWS = 8
-local CHECK = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local MAX_TICKS = 160
 
 local panel, picker
-local rows, legs = {}, {}
+local rows, legs, rules, ticks = {}, {}, {}, {}
 local lastMain
 local xpShown, routeShown = 0, 0
 
--------------------------------------------------------------------------------
--- Hilfen
--------------------------------------------------------------------------------
-local ICONS = {
-    complete = "Ability_DualWield", mob = "Ability_DualWield", unitscan = "Ability_DualWield",
-    target = "INV_Misc_GroupNeedMore", collect = "INV_Misc_Bag_10", ["goto"] = "Ability_Hunter_Pathfinding",
-    zone = "Ability_Hunter_Pathfinding", subzone = "Ability_Hunter_Pathfinding", fly = "Ability_Hunter_Pathfinding",
-    fp = "Ability_Hunter_Pathfinding", hs = "INV_Misc_Rune_01", home = "INV_Misc_Rune_01",
-    train = "INV_Misc_Book_09", trainer = "INV_Misc_Book_09", vendor = "INV_Misc_Coin_01",
-    xp = "Spell_Holy_SurgeOfLight", use = "INV_Misc_Gear_01", equip = "INV_Misc_Gear_01",
-}
--- Eigene Glyphen in einem Strichstil, eingefärbt nach Art der Handlung: Quest gold, Kampf rot,
--- Sammeln blau, Weg und Reise im Akzentton, alles andere neutral.
-local GLYPH = {
-    accept = { "accept", "quest" }, turnin = { "turnin", "quest" }, abandon = { "kill", "bad" },
-    complete = { "kill", "bad" }, mob = { "kill", "bad" }, unitscan = { "kill", "bad" },
-    collect = { "collect", "item" }, vendor = { "collect", "neutral" }, target = { "talk", "ok" },
-    ["goto"] = { "goto", "accent" }, zone = { "ship", "accent" }, subzone = { "goto", "accent" },
-    fly = { "fly", "accent" }, fp = { "fly", "accent" }, hs = { "home", "accent" }, home = { "home", "accent" },
-    train = { "train", "neutral" }, trainer = { "train", "neutral" }, xp = { "xp", "accent" },
-    use = { "use", "item" }, equip = { "use", "item" }, boat = { "ship", "accent" },
-    zeppelin = { "ship", "accent" }, tram = { "ship", "accent" },
-}
-local GLYPH_COLOR = {
-    quest = { 0.98, 0.75, 0.14 }, bad = { 1, 0.37, 0.29 }, item = { 0.38, 0.65, 0.98 },
-    ok = { 0.29, 0.87, 0.5 },
-}
-local function SetIcon(tex, tag, done)
-    local g = GLYPH[tag]
-    if g then
-        local c = done and ns.COLORS.text3 or GLYPH_COLOR[g[2]] or (g[2] == "accent" and ns.ACCENT) or ns.COLORS.text2
-        tex:SetTexture(ns.TEX .. "ulx-glyph-" .. g[1])
-        tex:SetTexCoord(0, 1, 0, 1)
-        tex:SetVertexColor(c[1], c[2], c[3], 1)
+-- Farbe aus einem Token: Texte über SetTextColor, Texturen über SetVertexColor
+local function Paint(region, c, a)
+    if region.SetTextColor then
+        region:SetTextColor(c[1], c[2], c[3], a or c[4] or 1)
     else
-        tex:SetTexture("Interface\\Icons\\" .. (ICONS[tag] or "INV_Misc_Note_01"))
-        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        tex:SetVertexColor(1, 1, 1, 1)
+        region:SetVertexColor(c[1], c[2], c[3], a or c[4] or 1)
     end
+end
+
+-- Haarlinie: eine Textur ohne Einrasten ins Pixelraster, damit 1 px bei jeder Skalierung 1 px bleibt
+local function Hairline(parent, layer)
+    local t = parent:CreateTexture(nil, layer or "BORDER")
+    t:SetTexture(ns.WHITE)
+    if t.SetSnapToPixelGrid then
+        t:SetSnapToPixelGrid(false)
+        t:SetTexelSnappingBias(0)
+    end
+    Paint(t, C.cardBorder)
+    return t
+end
+
+local function Label(parent, size, color, weight)
+    return ns.Label(parent, size, color, "OVERLAY", weight)
+end
+
+-------------------------------------------------------------------------------
+-- Glyphen für Zeilen ohne Verb (Ziele wie "Murlocs getötet 3/8"), einfarbig gedämpft
+-------------------------------------------------------------------------------
+local GLYPH = {
+    accept = "accept", turnin = "turnin", abandon = "kill", complete = "kill", mob = "kill", unitscan = "kill",
+    collect = "collect", vendor = "collect", target = "talk", ["goto"] = "goto", zone = "ship", subzone = "goto",
+    fly = "fly", fp = "fly", hs = "home", home = "home", train = "train", trainer = "train", xp = "xp",
+    use = "use", equip = "use", boat = "ship", zeppelin = "ship", tram = "ship",
+}
+
+-- Verb und Objekt aus dem übersetzten Text trennen: "Annehmen: X" -> "Annehmen", "X".
+-- Gilt für Vorlagen mit dem Verb vorn ("Go to %s") und hinten (koreanisch "%s 수락").
+local VERB_KEYS = { "Accept: %s", "Turn in: %s", "Collect: %s", "Train: %s", "Abandon: %s", "Use: %s",
+    "Enemies: %s", "Talk to: %s", "Get the flight path: %s", "Go to %s", "Fly to %s", "Travel to %s" }
+local function Trim(s)
+    s = s:gsub("^%s+", ""):gsub("[%s:：]+$", "")
+    return s
+end
+local function SplitVerb(text)
+    if not text then return nil, text end
+    for _, key in ipairs(VERB_KEYS) do
+        local prefix, suffix = ns.L[key]:match("^(.-)%%s(.*)$")
+        if prefix and prefix ~= "" and text:sub(1, #prefix) == prefix then
+            return Trim(prefix), text:sub(#prefix + 1)
+        elseif prefix == "" and suffix and suffix ~= "" and #text > #suffix and text:sub(-#suffix) == suffix then
+            return Trim(suffix), text:sub(1, #text - #suffix)
+        end
+    end
+    return nil, text
 end
 
 local Clock, Meters = ns.Clock, ns.Meters
 
 local function Speed() return ns.RunSpeed() end -- im Kampf geschuetzt, siehe Kit
 
-local function Overline(parent, text)
-    local fs = ns.Label(parent, 10, A1, "OVERLAY", "Bold")
-    fs:SetText(text)
-    return fs
-end
+-- Farbcodes aus den Tokens: Ziel (Person, Ort) im Akzent, Gegner in "bad", Stockwerk in "warn"
+local HEX_ACCENT, HEX_BAD, HEX_WARN, HEX_MUTED = ns.Hex(A1), ns.Hex(C.bad), ns.Hex(C.warn), ns.Hex(C.text3)
+local function Colored(hex, text) return "|cff" .. hex .. text .. "|r" end
 
--- Kleine runde Info-Pille ("320 m", "0:50")
-local function Pill(parent)
-    local f = CreateFrame("Frame", nil, parent)
-    f:SetHeight(18)
-    f.bg = ns.Round(f, "circle", 9, { 1, 1, 1, 0.08 }, "BACKGROUND")
-    f.text = ns.Label(f, 11, C.text2, "OVERLAY", "Medium")
-    f.text:SetPoint("CENTER", 0, 0)
-    function f:Set(text)
-        self.text:SetText(text)
-        self:SetWidth(self.text:GetStringWidth() + 16)
-    end
-    return f
-end
-
--- Weich gleitender Wert (für Balken)
+-- Weich gleitender Wert (für Balken und die Glutmarke)
 local function Approach(current, target, dt)
     local k = math.min(1, dt * 10)
     return current + (target - current) * k
 end
 
--- Balken gleiten weich zum Ziel. Sind beide angekommen, hängt sich der Handler ab; RenderHeader hängt
--- ihn bei jedem neuen Ziel wieder an (sonst liefe er jedes Bild weiter, auch ohne Bewegung).
+-------------------------------------------------------------------------------
+-- Schiene: ein Strich je Schritt (bei langen Routen je Block), erledigte gedämpft hell, die Glutmarke
+-- auf dem aktuellen Schritt. Über die Höhe der Hülle verteilt.
+-------------------------------------------------------------------------------
+local RAIL_TOP, RAIL_BOTTOM = 14, 14
+
+local function MarkY(fraction)
+    local h = (panel.bodyH or FIXED_H) - RAIL_TOP - RAIL_BOTTOM
+    return -RAIL_TOP - fraction * h
+end
+
+local function RenderRail(total, at)
+    local body = panel.body
+    local h = (panel.bodyH or FIXED_H) - RAIL_TOP - RAIL_BOTTOM
+    local count = 0
+    local block = 1
+    if total and total > 1 then
+        block = math.max(1, math.ceil(total / MAX_TICKS), math.ceil(total / math.max(2, math.floor(h / 2))))
+        count = math.ceil(total / block)
+    end
+    for i = 1, count do
+        local t = ticks[i]
+        if not t then
+            t = Hairline(body, "BORDER")
+            t:SetSize(7, 1)
+            ticks[i] = t
+        end
+        local first = (i - 1) * block + 1
+        local y = count > 1 and (-RAIL_TOP - (i - 1) / (count - 1) * h) or -RAIL_TOP
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", body, "TOPLEFT", 8, y)
+        Paint(t, (at and first < at) and C.text3 or C.cardBorder)
+        t:Show()
+    end
+    for i = count + 1, #ticks do ticks[i]:Hide() end
+    panel.mark:SetShown(count > 0)
+end
+
+local function PlaceMark()
+    panel.mark:ClearAllPoints()
+    panel.mark:SetPoint("LEFT", panel.body, "TOPLEFT", 4, MarkY(routeShown))
+end
+
+-- Balken und Glutmarke gleiten weich zum Ziel. Sind beide angekommen, hängt sich der Handler ab;
+-- RenderHeader hängt ihn bei jedem neuen Ziel wieder an (sonst liefe er jedes Bild weiter).
 local SETTLED = 0.001
 local function Slide(_, dt)
     local w = panel.xp:GetWidth()
@@ -103,10 +153,10 @@ local function Slide(_, dt)
     routeShown = Approach(routeShown, routeTarget, dt)
     local settled = math.abs(xpTarget - xpShown) < SETTLED and math.abs(routeTarget - routeShown) < SETTLED
     if settled then xpShown, routeShown = xpTarget, routeTarget end
-    panel.xpFill:SetWidth(math.max(8, w * xpShown))
-    panel.rest:SetWidth(math.max(8, w * (panel.restTarget or 0)))
+    panel.xpFill:SetWidth(math.max(1, w * xpShown))
+    panel.rest:SetWidth(math.max(1, w * (panel.restTarget or 0)))
     panel.rest:SetShown((panel.restTarget or 0) > xpTarget + 0.005)
-    panel.routeFill:SetWidth(math.max(3, panel.route:GetWidth() * routeShown))
+    PlaceMark()
     if settled then
         panel:SetScript("OnUpdate", nil)
         panel.sliding = false
@@ -120,83 +170,111 @@ local function StartSlide()
     end
 end
 
+-- Haarlinien zwischen den Abschnitten, aus einem Vorrat
+local ruleCount = 0
+local function Rule(y)
+    ruleCount = ruleCount + 1
+    local r = rules[ruleCount]
+    if not r then
+        r = Hairline(panel, "BORDER")
+        r:SetHeight(1)
+        rules[ruleCount] = r
+    end
+    r:ClearAllPoints()
+    r:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, y)
+    r:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -RIGHT, y)
+    r:Show()
+end
+
 -------------------------------------------------------------------------------
--- Runde Knoepfe mit Glyphe
+-- Ruhige Symbol-Knöpfe: ohne Fläche, beim Darüberfahren die erhöhte Fläche, immer mit Tooltip
 -------------------------------------------------------------------------------
 local function GlyphButton(glyph, tooltip, onClick)
     local b = CreateFrame("Button", nil, panel)
-    b:SetSize(26, 26)
-    b.bg = ns.Round(b, "circle", 13, { 1, 1, 1, 0.06 }, "BACKGROUND")
+    b:SetSize(24, 24)
+    b.bg = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
+    b.bg:SetShown(false)
     b.glyph = b:CreateTexture(nil, "ARTWORK")
     b.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
     b.glyph:SetSize(16, 16)
     b.glyph:SetPoint("CENTER")
-    b.glyph:SetVertexColor(C.text2[1], C.text2[2], C.text2[3])
+    Paint(b.glyph, C.text3)
     b:SetScript("OnClick", onClick)
     b:SetScript("OnEnter", function(self)
-        self.bg:SetColor(A1[1], A1[2], A1[3], 0.22)
-        self.glyph:SetVertexColor(1, 1, 1)
+        self.bg:SetShown(true)
+        Paint(self.glyph, C.text)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(tooltip, 1, 1, 1, 1, true)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function(self)
-        self.bg:SetColor(1, 1, 1, 0.06)
-        self.glyph:SetVertexColor(C.text2[1], C.text2[2], C.text2[3])
+        self.bg:SetShown(false)
+        Paint(self.glyph, C.text3)
         GameTooltip_Hide()
     end)
     return b
 end
 
 -------------------------------------------------------------------------------
--- Zeilen der Hero-Karte
+-- Zeilen: der Schrittsatz (erste offene Handlung) groß; weitere Handlungen als Verb-Spalte plus Objekt
 -------------------------------------------------------------------------------
 local function GetRow(i)
     if rows[i] then return rows[i] end
     local row = CreateFrame("Button", nil, panel.hero)
     row:RegisterForClicks("RightButtonUp")
-    row.tile = CreateFrame("Frame", nil, row)
-    row.tile:SetSize(ICON_TILE, ICON_TILE)
-    row.tile:SetPoint("TOPLEFT", 0, 0)
-    row.tileBg = ns.Round(row.tile, "round", 8, { 1, 1, 1, 0.07 }, "BACKGROUND")
-    row.icon = row.tile:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(ICON, ICON)
-    row.icon:SetPoint("CENTER")
-    row.check = row.tile:CreateTexture(nil, "OVERLAY")
-    row.check:SetTexture(CHECK)
-    row.check:SetSize(14, 14)
-    row.check:SetPoint("BOTTOMRIGHT", 4, -4)
-    row.text = ns.Label(row, 14, C.text, "OVERLAY", "Medium")
-    row.text:SetPoint("TOPLEFT", row.tile, "TOPRIGHT", 10, -1)
+    row.hl = row:CreateTexture(nil, "BACKGROUND")
+    row.hl:SetTexture(ns.WHITE)
+    row.hl:SetPoint("TOPLEFT", -6, 4)
+    row.hl:SetPoint("BOTTOMRIGHT", 6, -4)
+    Paint(row.hl, C.card)
+    row.hl:Hide()
+    row.sep = Hairline(row, "BORDER")
+    row.sep:SetHeight(1)
+    row.sep:SetPoint("BOTTOMLEFT", row, "TOPLEFT", 0, 4)
+    row.sep:SetPoint("BOTTOMRIGHT", row, "TOPRIGHT", 0, 4)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(14, 14)
+    row.icon:SetPoint("TOPLEFT", 0, -1)
+    row.verb = Label(row, SZ.small, C.text3, "Medium")
+    row.verb:SetPoint("TOPLEFT", 0, -2)
+    row.text = Label(row, SZ.body, C.text, "Medium")
     row.text:SetWordWrap(true)
-    row.track = CreateFrame("Frame", nil, row)
+    row.dist = Label(row, SZ.display, C.text, "Bold")
+    row.dist:SetJustifyH("RIGHT")
+    row.dist:SetPoint("TOPRIGHT", 0, 0)
+    row.time = Label(row, SZ.small, C.text3, "Medium")
+    row.time:SetJustifyH("RIGHT")
+    row.time:SetPoint("TOPRIGHT", row.dist, "BOTTOMRIGHT", 0, -2)
+    row.track = Hairline(row, "BORDER")
     row.track:SetHeight(4)
-    row.trackBg = ns.Round(row.track, "circle", 2, { 1, 1, 1, 0.08 }, "BACKGROUND")
-    row.fill = CreateFrame("Frame", nil, row.track)
-    row.fill:SetPoint("TOPLEFT")
-    row.fill:SetPoint("BOTTOMLEFT")
-    row.fillBg = ns.Round(row.fill, "circle", 2, { A1[1], A1[2], A1[3], 1 }, "ARTWORK")
-    row.count = ns.Label(row, 11, C.text2, "OVERLAY", "Medium")
-    row.pill1 = Pill(row)
-    row.pill2 = Pill(row)
-    row.hint = ns.Label(row, 11, C.text3, "OVERLAY", "Light")
+    row.fill = row:CreateTexture(nil, "ARTWORK")
+    row.fill:SetTexture(ns.WHITE)
+    row.fill:SetHeight(4)
+    row.fill:SetPoint("TOPLEFT", row.track, "TOPLEFT")
+    Paint(row.fill, C.text)
+    row.count = Label(row, SZ.small, C.text3, "Bold")
+    row.hint = Label(row, SZ.small, C.text2, "Medium")
     row.hint:SetWordWrap(true)
     row:SetScript("OnClick", function(self)
         if self.si then R.Skip(self.si) ns.RequestUpdate() end
     end)
     row:SetScript("OnEnter", function(self)
+        self.hl:Show()
         if not self.full then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(self.full, 1, 1, 1, 1, true)
-        GameTooltip:AddLine(ns.L["Click: skip step"], 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(ns.L["Click: skip step"], C.text3[1], C.text3[2], C.text3[3])
         GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", GameTooltip_Hide)
+    row:SetScript("OnLeave", function(self)
+        self.hl:Hide()
+        GameTooltip_Hide()
+    end)
     rows[i] = row
     return row
 end
 
-local function FillRow(row, ref, entry, y, waypoint, width)
+local function FillRow(row, index, ref, entry, y, waypoint, width)
     local a, si = entry.a, ref.si
     local text, have, need, hint = T.Action(a)
     if entry.text then text = entry.text end
@@ -209,64 +287,93 @@ local function FillRow(row, ref, entry, y, waypoint, width)
         done = P.BLOCKING[a[1]] and P.Done(a, { routeId = ref.route.id, si = si, ai = entry.i })
     end
     if ref.kind == "catchup" and P.BLOCKING[a[1]] then
-        hint = ns.F("Catch up from %s", ref.route.n or "") .. (hint and ("  ·  " .. hint) or "")
+        hint = ns.F("Catch up from %s", ref.route.n or "") .. (hint and (". " .. hint) or "")
     elseif ref.kind == "open" and P.BLOCKING[a[1]] then
-        hint = ns.L["Postponed, ready to turn in"] .. (hint and ("  ·  " .. hint) or "")
+        hint = ns.L["Postponed, ready to turn in"] .. (hint and (". " .. hint) or "")
     end
     -- Überspringen per Klick nur für Schritte der aktiven Route
     row.si = ref.route == (ns.view and ns.view.route) and si or nil
     row.full = text
-    SetIcon(row.icon, a[1], done)
-    -- die erste offene Handlung trägt die Karte: fett und größer; Erledigtes tritt zurück
-    local emphasis = entry.first and not done
-    local styleKey = emphasis and "Bold15" or "Medium14"
-    if row.styleKey ~= styleKey then
-        row.styleKey = styleKey
-        row.text:SetFont(ns.FontPath(emphasis and "Bold" or "Medium"), emphasis and 15 or 14, "")
-    end
-    row.check:SetShown(done and true or false)
-    row.text:SetWidth(width - ICON_TILE - 10)
-    row.text:SetText(text or "")
-    row.text:SetTextColor(done and C.text3[1] or C.text[1], done and C.text3[2] or C.text[2], done and C.text3[3] or C.text[3])
-    local below = -(row.text:GetStringHeight() + 7)
-    local textW = width - ICON_TILE - 10
+    row.sep:SetShown(index > 1)
 
-    -- Zielbalken als Pille mit Zaehler
+    -- Entfernung und Laufzeit rechts als Zahlen, nur für den Wegpunkt, zu dem der Pfeil führt
+    local figure = false
+    row.dist:Hide()
+    row.time:Hide()
+    row.waypoint = nil
+    if waypoint == a and not done then
+        local d = S.Distance(a)
+        if d then
+            row.dist:SetText(Meters(d))
+            row.time:SetText(Clock(d / Speed()))
+            row.dist:Show()
+            row.time:Show()
+            row.waypoint = true
+            figure = true
+        end
+    end
+    local textRight = figure and FIG_W or 0
+
+    -- Der Schrittsatz: groß in der Anzeigeschrift, ohne Verb-Spalte. Erledigtes tritt zurück.
+    local step = entry.first and not done
+    local x
+    if step then
+        row.verb:Hide()
+        row.icon:Hide()
+        x = 0
+        if row.styleKey ~= "step" then
+            row.styleKey = "step"
+            row.text:SetFont(ns.FontPath("Bold"), SZ.display, "")
+            row.text.baseSize = SZ.display
+        end
+        row.text:SetText(text or "")
+    else
+        if row.styleKey ~= "row" then
+            row.styleKey = "row"
+            row.text:SetFont(ns.FontPath("Medium"), SZ.body, "")
+            row.text.baseSize = SZ.body
+        end
+        local verb, object = SplitVerb(text)
+        x = VERB_W
+        if verb then
+            row.icon:Hide()
+            row.verb:SetText(verb)
+            ns.Fit(row.verb, VERB_W - 6, 9)
+            row.verb:Show()
+            row.text:SetText(object or "")
+        else
+            row.verb:Hide()
+            row.icon:SetTexture(ns.TEX .. "ulx-glyph-" .. (GLYPH[a[1]] or "goto"))
+            Paint(row.icon, C.text3)
+            row.icon:Show()
+            row.text:SetText(text or "")
+        end
+    end
+    local textW = width - x - textRight
+    row.text:ClearAllPoints()
+    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", x, 0)
+    row.text:SetWidth(textW)
+    Paint(row.text, done and C.text3 or C.text)
+    local below = -(row.text:GetStringHeight() + 6)
+
+    -- Zielbalken: 4 px Spur in der Linienfarbe, Füllung hell, Zähler als Zahl rechts
     if need and need > 0 and not done then
+        local trackW = textW - 40
         row.track:ClearAllPoints()
         row.track:SetPoint("TOPLEFT", row.text, "TOPLEFT", 0, below - 2)
-        row.track:SetWidth(textW - 44)
-        row.fill:SetWidth(math.max(4, (textW - 44) * math.min(1, (have or 0) / need)))
+        row.track:SetWidth(trackW)
+        row.fill:SetWidth(math.max(1, trackW * math.min(1, (have or 0) / need)))
         row.count:ClearAllPoints()
         row.count:SetPoint("LEFT", row.track, "RIGHT", 8, 0)
         row.count:SetText(("%d/%d"):format(have or 0, need))
         row.track:Show()
+        row.fill:Show()
         row.count:Show()
         below = below - 14
     else
         row.track:Hide()
+        row.fill:Hide()
         row.count:Hide()
-    end
-
-    -- Entfernung und Laufzeit als Pillen
-    row.pill1:Hide()
-    row.pill2:Hide()
-    if waypoint == a and not done then
-        local d = S.Distance(a)
-        if d then
-            row.pill1:Set(Meters(d))
-            row.pill2:Set(Clock(d / Speed()))
-            row.pill1:ClearAllPoints()
-            row.pill1:SetPoint("TOPLEFT", row.text, "TOPLEFT", 0, below)
-            row.pill2:ClearAllPoints()
-            row.pill2:SetPoint("LEFT", row.pill1, "RIGHT", 6, 0)
-            row.pill1:Show()
-            row.pill2:Show()
-            row.waypoint = true
-            below = below - 24
-        end
-    else
-        row.waypoint = nil
     end
 
     local always = ref.kind == "catchup" or ref.kind == "open"
@@ -281,34 +388,32 @@ local function FillRow(row, ref, entry, y, waypoint, width)
         row.hint:Hide()
     end
 
-    local height = math.max(ICON_TILE, -below)
+    local height = math.max(figure and 40 or 16, -below)
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", panel.hero, "TOPLEFT", INNER, y)
+    row:SetPoint("TOPLEFT", panel.hero, "TOPLEFT", 0, y)
     row:SetSize(width, height)
     row:Show()
     return height
 end
 
 -------------------------------------------------------------------------------
--- Reise-Zeitleiste
+-- Reise: Etappen mit Marken (erledigt grün, aktuell hell, später gedämpft) an einer Haarlinie
 -------------------------------------------------------------------------------
 local function GetLeg(i)
     if legs[i] then return legs[i] end
     local leg = CreateFrame("Frame", nil, panel.travel)
     leg:SetHeight(28)
-    leg.dot = leg:CreateTexture(nil, "ARTWORK")
-    leg.dot:SetTexture(ns.TEX .. "ulx-circle")
-    leg.dot:SetSize(10, 10)
-    leg.dot:SetPoint("TOPLEFT", 0, -3)
-    leg.line = leg:CreateTexture(nil, "BACKGROUND")
-    leg.line:SetTexture(ns.WHITE)
-    leg.line:SetWidth(2)
-    leg.line:SetPoint("TOP", leg.dot, "BOTTOM", 0, -2)
+    leg.mark = leg:CreateTexture(nil, "ARTWORK")
+    leg.mark:SetTexture(ns.WHITE)
+    leg.mark:SetSize(9, 3)
+    leg.mark:SetPoint("TOPLEFT", 0, -7)
+    leg.line = Hairline(leg, "BORDER")
+    leg.line:SetWidth(1)
+    leg.line:SetPoint("TOP", leg.mark, "BOTTOM", 0, -3)
     leg.line:SetPoint("BOTTOM", leg, "BOTTOM", 0, -6)
-    leg.line:SetVertexColor(1, 1, 1, 0.12)
-    leg.text = ns.Label(leg, 13, C.text, "OVERLAY", "Medium")
-    leg.text:SetPoint("TOPLEFT", leg.dot, "TOPRIGHT", 10, 2)
-    leg.sub = ns.Label(leg, 11, C.text2, "OVERLAY", "Light")
+    leg.text = Label(leg, SZ.body, C.text, "Medium")
+    leg.text:SetPoint("TOPLEFT", leg, "TOPLEFT", 18, 0)
+    leg.sub = Label(leg, SZ.small, C.text2, "Medium")
     leg.sub:SetPoint("TOPLEFT", leg.text, "BOTTOMLEFT", 0, -2)
     legs[i] = leg
     return leg
@@ -319,48 +424,48 @@ local function RenderTravel(plan, y, width)
         panel.travel:Hide()
         return y
     end
+    Rule(y)
+    y = y - 10
     panel.travel:ClearAllPoints()
-    panel.travel:SetPoint("TOPLEFT", PAD, y)
+    panel.travel:SetPoint("TOPLEFT", LEFT, y)
     panel.travel:SetWidth(width)
-    local inner = -14
-    panel.travelLabel:SetPoint("TOPLEFT", INNER, inner)
-    inner = inner - 18
+    panel.travelLabel:ClearAllPoints()
+    panel.travelLabel:SetPoint("TOPLEFT", 0, 0)
+    local inner = -20
     local current = true
     for i, leg in ipairs(plan) do
         local row = GetLeg(i)
-        local color = leg.done and C.ok or (current and A1 or C.text3)
-        row.dot:SetVertexColor(color[1], color[2], color[3], 1)
+        Paint(row.mark, leg.done and C.ok or (current and C.text or C.text3))
         row.text:SetText(leg.text)
-        ns.Fit(row.text, width - 2 * INNER - 20, 10)
-        row.text:SetTextColor(leg.done and C.text3[1] or C.text[1], leg.done and C.text3[2] or C.text[2],
-            leg.done and C.text3[3] or C.text[3])
+        ns.Fit(row.text, width - 18, 10)
+        Paint(row.text, leg.done and C.text3 or C.text)
         local sub = leg.sub
         if leg.kind == "goto" and not leg.done and leg.point then
             local d = S.Distance(leg.point)
-            if d then sub = (sub and (sub .. "  ·  ") or "") .. Meters(d) .. "  ·  " .. Clock(d / Speed()) end
+            if d then sub = (sub and (sub .. ", ") or "") .. Meters(d) .. ", " .. Clock(d / Speed()) end
         end
         row.sub:SetText(sub or "")
-        ns.Fit(row.sub, width - 2 * INNER - 20, 9)
+        ns.Fit(row.sub, width - 18, 9)
         row.line:SetShown(i < #plan)
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", panel.travel, "TOPLEFT", INNER, inner)
-        row:SetWidth(width - 2 * INNER)
+        row:SetPoint("TOPLEFT", panel.travel, "TOPLEFT", 0, inner)
+        row:SetWidth(width)
         row:Show()
         inner = inner - ((sub and sub ~= "") and 38 or 26)
         if not leg.done then current = false end
     end
     for i = #plan + 1, #legs do legs[i]:Hide() end
-    panel.travel:SetHeight(-inner + 6)
+    panel.travel:SetHeight(-inner)
     panel.travel:Show()
-    return y - (-inner + 6) - 10
+    return y - (-inner) - 6
 end
 
 -------------------------------------------------------------------------------
--- Boni-Kacheln: vier feste Kacheln unter der XP-Leiste. Sie sind geschuetzte Knoepfe
+-- Statusleiste: vier feste Spalten unter der XP-Leiste. Sie sind geschuetzte Knoepfe
 -- (SecureActionButton), damit ein Klick Essen essen, den Schlafsack auslegen oder ein Lagerfeuer
 -- aufstellen darf. Position und Attribute aendern sich nie im Kampf.
 -------------------------------------------------------------------------------
-local TILE_Y, TILE_H, TILE_GAP = -108, 76, 6
+local TILE_Y, TILE_H, TILE_GAP = -108, 44, 8
 local tiles = {}
 
 local function StartSleepingBag()
@@ -376,44 +481,37 @@ local function StartSleepingBag()
 end
 
 local function BuildTiles()
-    local width = (WIDTH - 2 * PAD - 3 * TILE_GAP) / 4
+    local width = (CW - 3 * TILE_GAP) / 4
     for i = 1, 4 do
         local t = CreateFrame("Button", "UltimaBonusTile" .. i, panel, "SecureActionButtonTemplate")
         t:SetSize(width, TILE_H)
-        t:SetPoint("TOPLEFT", panel, "TOPLEFT", PAD + (i - 1) * (width + TILE_GAP), TILE_Y)
+        t:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT + (i - 1) * (width + TILE_GAP), TILE_Y)
         t:RegisterForClicks("AnyUp", "AnyDown")
-        t.bg = ns.Round(t, "round", 12, { 1, 1, 1, 0.05 }, "BACKGROUND")
-        t.ring = ns.Round(t, "ring", 12, C.cardBorder, "BORDER")
-        t.icon = ns.Icon(t, 24)
-        t.icon:SetPoint("TOPLEFT", 10, -10)
-        t.dot = t:CreateTexture(nil, "ARTWORK")
-        t.dot:SetTexture(ns.TEX .. "ulx-circle")
-        t.dot:SetSize(8, 8)
-        t.dot:SetPoint("TOPRIGHT", -10, -12)
-        t.title = ns.Label(t, 12, C.text, "OVERLAY", "Bold")
-        t.title:SetPoint("TOPLEFT", 10, -40)
-        t.status = ns.Label(t, 10, C.text2, "OVERLAY", "Light")
-        t.status:SetPoint("TOPLEFT", 10, -56)
-        t.innerW = width - 18 -- 10 links, 8 rechts bis zum Ring
+        t.bg = ns.Round(t, "round", TH.radius.control, C.card, "BACKGROUND")
+        t.bg:SetShown(false)
+        t.title = Label(t, SZ.small, C.text3, "Medium")
+        t.title:SetPoint("TOPLEFT", 0, -4)
+        t.status = Label(t, SZ.heading, C.text, "Bold")
+        t.status:SetPoint("TOPLEFT", t.title, "BOTTOMLEFT", 0, -3)
+        t.innerW = width - 4
         -- Der Knopf meldet Drücken und Loslassen; gestartet wird nur beim Loslassen (sonst doppelt)
         t:SetScript("PostClick", function(self, _, down)
             if self.routeAction and not down then StartSleepingBag() end
         end)
         t:SetScript("OnEnter", function(self)
-            self.bg:SetColor(1, 1, 1, 0.09)
+            self.bg:SetShown(true)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText(self.tipText or "", 1, 1, 1, 1, true)
             GameTooltip:Show()
         end)
         t:SetScript("OnLeave", function(self)
-            self.bg:SetColor(1, 1, 1, 0.05)
+            self.bg:SetShown(false)
             GameTooltip_Hide()
         end)
         tiles[i] = t
     end
 end
 
--- Nur Inhalte aendern; Attribute nur ausserhalb des Kampfes.
 -- Deckkraft des Fensters: Einstellung, im Kampf der Kampf-Wert (SetAlpha ist auch im Kampf erlaubt)
 function ns.ApplyPanelAlpha()
     if not panel then return end
@@ -421,10 +519,11 @@ function ns.ApplyPanelAlpha()
     panel:SetAlpha(panel.inCombat and math.min(w.alpha, w.combatAlpha) or w.alpha)
 end
 
+-- Nur Inhalte aendern; Attribute nur ausserhalb des Kampfes.
 local function RenderTiles()
     local list, alerts = ns.Bonus.Tiles()
     local combat = InCombatLockdown()
-    -- Kacheln ein- oder ausblenden (Einstellung tiles.shown); geschützte Knöpfe nur außerhalb des Kampfes
+    -- Spalten ein- oder ausblenden (Einstellung tiles.shown); geschützte Knöpfe nur außerhalb des Kampfes
     if not combat then
         for _, t in ipairs(tiles) do
             if t:IsShown() ~= ns.db.tiles.shown then t:SetShown(ns.db.tiles.shown) end
@@ -433,30 +532,21 @@ local function RenderTiles()
     local titles, statuses = {}, {}
     for i, data in ipairs(list) do
         local t = tiles[i]
-        local color = ns.Bonus.COLORS[data.state] or C.text3
-        t.icon:SetTexture(data.icon)
-        -- leerer Zustand tritt zurück, aktive Zustände zeigen ihre Farbe auch im Statustext
         local idle = data.state == "off" and not data.action
-        t.icon:SetDesaturated(idle)
-        t.icon:SetAlpha(idle and 0.45 or 1)
-        t.title:SetTextColor(idle and C.text3[1] or C.text[1], idle and C.text3[2] or C.text[2], idle and C.text3[3] or C.text[3])
-        t.dot:SetVertexColor(color[1], color[2], color[3], 1)
         t.title:SetText(data.title)
         ns.Fit(t.title, t.innerW, 9)
         local action = data.action
+        -- Ein Wert, der Handeln verlangt, steht im Akzent und ist ein Wort ("Jetzt essen"), nie ein Punkt
         if action then
             t.status:SetText(data.actionText or data.status)
-            ns.Fit(t.status, t.innerW, 8)
-            t.status:SetTextColor(A1[1], A1[2], A1[3])
-            t.ring:SetColor(A1[1], A1[2], A1[3], 0.45)
+            Paint(t.status, A1)
         else
             t.status:SetText(data.status)
-            ns.Fit(t.status, t.innerW, 8)
-            if idle then t.status:SetTextColor(C.text3[1], C.text3[2], C.text3[3])
-            else t.status:SetTextColor(color[1], color[2], color[3]) end
-            if data.state == "bad" then t.ring:SetColor(color[1], color[2], color[3], 0.5)
-            else t.ring:SetColor(C.cardBorder[1], C.cardBorder[2], C.cardBorder[3], C.cardBorder[4]) end
+            if idle then Paint(t.status, C.text3)
+            elseif data.state == "ok" then Paint(t.status, C.text)
+            else Paint(t.status, ns.Bonus.COLORS[data.state] or C.text) end
         end
+        ns.Fit(t.status, t.innerW, 9)
         t.tipText = data.tip
         titles[#titles + 1], statuses[#statuses + 1] = t.title, t.status
         t.routeAction = action and action.type == "route" or nil
@@ -468,7 +558,7 @@ local function RenderTiles()
             end
         end
     end
-    -- alle vier Kacheln in derselben Schriftgröße (die kleinste nötige), sonst wirkt die Reihe unruhig
+    -- alle vier Spalten in derselben Schriftgröße (die kleinste nötige), sonst wirkt die Reihe unruhig
     ns.FitSame(titles)
     ns.FitSame(statuses)
     return alerts
@@ -492,23 +582,24 @@ end
 local function RenderHeader(view)
     local route = view.route
     panel.title:SetText(route and route.n or ns.L["No route"])
-    ns.Fit(panel.title, HEAD_W, 13)
+    ns.Fit(panel.title, HEAD_W, 15)
     local level = S.Level()
     panel.levelText:SetText(tostring(level))
-    panel.levelPill:SetWidth(math.max(26, panel.levelText:GetStringWidth() + 18))
     if route then
         local total = #route.s
         local at = view.main or total
-        local sub = ns.F("Step %d of %d  ·  %d %%", at, total, math.floor(at / total * 100))
+        local sub = ns.F("Step %d of %d", at, total)
         local parked = (view.waiting or 0) + #(view.open or {})
-        if parked > 0 then sub = sub .. "  ·  " .. ns.F("%d postponed", parked) end
+        if parked > 0 then sub = sub .. ", " .. ns.F("%d postponed", parked) end
         panel.sub:SetText(sub)
         ns.Fit(panel.sub, HEAD_W, 9)
-        panel.routeTarget = at / total
+        panel.routeTarget = total > 1 and (at - 1) / (total - 1) or 0
+        panel.railTotal, panel.railAt = total, at
     else
         panel.sub:SetText(ns.L["Route button: picks one for your level"])
         ns.Fit(panel.sub, HEAD_W, 9)
         panel.routeTarget = 0
+        panel.railTotal, panel.railAt = nil, nil
     end
     local xp, max = S.XP()
     local rested = GetXPExhaustion() or 0
@@ -516,7 +607,7 @@ local function RenderHeader(view)
         panel.xpTarget = xp / max
         panel.restTarget = math.min(xp + rested, max) / max
         local missing = max - xp
-        panel.xpLeft:SetText(ns.F("%d %%  ·  %s XP to go", math.floor(xp / max * 100),
+        panel.xpLeft:SetText(ns.F("%d %%, %s XP to go", math.floor(xp / max * 100),
             BreakUpLargeNumbers and BreakUpLargeNumbers(missing) or tostring(missing)))
         panel.xpRight:SetText(rested > 0 and ns.F("Rested %d %%", math.floor(rested / max * 100 + 0.5)) or "")
     else
@@ -526,35 +617,33 @@ local function RenderHeader(view)
     end
     StartSlide()
     -- Eine Zeile, zwei Texte: rechts "Erholt" höchstens die halbe Breite, links der Rest mit 10 px Abstand
-    local full = WIDTH - 2 * PAD
-    ns.Fit(panel.xpRight, full / 2, 9) -- rechtsbündig, Anker rechts: die Feldbreite stört nicht
-    local rightW = (panel.xpRight:GetText() or "") ~= "" and math.min(full / 2, ns.TextWidth(panel.xpRight)) + 10 or 0
-    ns.Fit(panel.xpLeft, full - rightW, 9)
+    ns.Fit(panel.xpRight, CW / 2, 9) -- rechtsbündig, Anker rechts: die Feldbreite stört nicht
+    local rightW = (panel.xpRight:GetText() or "") ~= "" and math.min(CW / 2, ns.TextWidth(panel.xpRight)) + 10 or 0
+    ns.Fit(panel.xpLeft, CW - rightW, 9)
 end
 
 local function Render(view)
     if not panel then return end
     view = view or ns.view or {}
+    ruleCount = 0
     RenderHeader(view)
     local route = view.route
-    local width = WIDTH - 2 * PAD
+    local width = CW
     local alerts = RenderTiles()
-    local y = ns.db.tiles.shown and (TILE_Y - TILE_H - 12) or (TILE_Y - 4)
-    -- Warnungen (Gruppe, Dungeon) als Zeile unter den Kacheln
-    -- nur echte Warnungen zeigen; "alles in Ordnung" braucht keine Zeile
+    local y = ns.db.tiles.shown and (TILE_Y - TILE_H - 8) or (TILE_Y + 2)
+    -- Warnungen (Gruppe, Dungeon) als Zeile unter der Statusleiste; "alles in Ordnung" braucht keine Zeile
     local warn = {}
     for _, a in ipairs(alerts) do if a.state ~= "ok" then warn[#warn + 1] = a end end
     alerts = warn
     if #alerts > 0 then
         local parts = {}
         for _, a in ipairs(alerts) do
-            local c = ns.Bonus.COLORS[a.state] or C.text2
-            parts[#parts + 1] = ("|cff%02x%02x%02x%s|r"):format(c[1] * 255, c[2] * 255, c[3] * 255, a.text)
+            parts[#parts + 1] = Colored(ns.Hex(ns.Bonus.COLORS[a.state] or C.text2), a.text)
         end
         panel.alert:ClearAllPoints()
-        panel.alert:SetPoint("TOPLEFT", PAD + 2, y)
+        panel.alert:SetPoint("TOPLEFT", LEFT, y)
         panel.alert:SetText(table.concat(parts, "    "))
-        ns.Fit(panel.alert, WIDTH - 2 * PAD - 4, 9)
+        ns.Fit(panel.alert, CW, 9)
         panel.alert:Show()
         y = y - 20
     else
@@ -574,10 +663,12 @@ local function Render(view)
         panel.travelPlan = plan
         y = RenderTravel(plan, y, width)
 
-        -- Hero-Karte
-        local inner = -14
-        panel.heroLabel:SetPoint("TOPLEFT", INNER, inner)
-        inner = inner - 20
+        -- Jetzt: Schrittsatz und Handlungen
+        Rule(y)
+        y = y - 10
+        panel.heroLabel:ClearAllPoints()
+        panel.heroLabel:SetPoint("TOPLEFT", 0, 0)
+        local inner = -22
         local firstOpen = false
         for _, ref in ipairs(R.Shown(view)) do
             -- Wegpunkt und Ansprechpartner gehören zusammen: "Gehe zu <NPC>" statt "Gehe zu <Zone>" plus
@@ -613,7 +704,7 @@ local function Render(view)
                 for _, entry in ipairs(actions) do if entry.a[1] == "goto" then shownGoto = entry end end
             end
             if firstMob and #mobs > 1 then
-                firstMob.text = ns.F("Enemies: %s", "|cffff5f4a" .. table.concat(mobs, ", ") .. "|r")
+                firstMob.text = ns.F("Enemies: %s", Colored(HEX_BAD, table.concat(mobs, ", ")))
             end
             for _, entry in ipairs(actions) do
                 local text = T.Action(entry.a)
@@ -621,21 +712,21 @@ local function Render(view)
                 if (entry.a[1] == "mob" or entry.a[1] == "unitscan") and entry ~= firstMob then text = nil end
                 if not npc and not object and mobs[1] and entry == shownGoto and not entry.a.t then
                     -- Jagdgebiet: sagen, wen du dort suchst, statt nur die Zone zu nennen
-                    entry.text = ns.F("Go to %s", "|cffff5f4a" .. mobs[1] .. "|r")
+                    entry.text = ns.F("Go to %s", Colored(HEX_BAD, mobs[1]))
                 end
                 if npc and hasGoto then
                     if entry.a[1] == "target" then
                         text = nil
                     elseif entry.a[1] == "goto" and not entry.a.t then
-                        entry.text = ns.F("Go to %s", "|cff4ade80" .. ns.NPC(npc) .. "|r")
+                        entry.text = ns.F("Go to %s", Colored(HEX_ACCENT, ns.NPC(npc)))
                     end
                 elseif object and entry.a[1] == "goto" and not entry.a.t then
-                    entry.text = ns.F("Go to %s", "|cffd946ef" .. object .. "|r")
+                    entry.text = ns.F("Go to %s", Colored(HEX_ACCENT, object))
                 end
                 -- Stockwerk ansagen: die Koordinate stimmt, aber das Ziel liegt über oder unter dir
                 local floor = ref.route.s[ref.si].fl
                 if floor and entry.a[1] == "goto" and text then
-                    entry.text = (entry.text or text) .. "  |cffffd133" .. (floor == "up" and ns.L["Upstairs"] or ns.L["Downstairs"]) .. "|r"
+                    entry.text = (entry.text or text) .. "  " .. Colored(HEX_WARN, floor == "up" and ns.L["Upstairs"] or ns.L["Downstairs"])
                 end
                 if text and count < MAX_ROWS then
                     count = count + 1
@@ -644,19 +735,19 @@ local function Render(view)
                         firstOpen = true
                         entry.first = true
                     end
-                    inner = inner - FillRow(GetRow(count), ref, entry, inner, waypoint, width - 2 * INNER) - 12
+                    inner = inner - FillRow(GetRow(count), count, ref, entry, inner, waypoint, width) - 10
                 end
             end
         end
         panel.hero:ClearAllPoints()
-        panel.hero:SetPoint("TOPLEFT", PAD, y)
-        panel.hero:SetSize(width, -inner + 2)
+        panel.hero:SetPoint("TOPLEFT", LEFT, y)
+        panel.hero:SetSize(width, -inner)
         panel.hero:Show()
         if view.main ~= lastMain then
             lastMain = view.main
             panel.heroFade()
         end
-        y = y - (-inner + 2) - 12
+        y = y - (-inner) - 4
 
         -- Tipp des Schritts, an dem du gerade arbeitest (beim Nachholen der Nachhol-Schritt)
         local main = view.catchup and view.catchup.route.s[view.catchup.si] or (view.main and route.s[view.main])
@@ -665,16 +756,16 @@ local function Render(view)
         local absent
         local mainFloor = main and main.fl
         if mainFloor and R.AtGoal(view) then
-            absent = "|cffffd133" .. (mainFloor == "up" and ns.L["The target is on a floor above you."] or ns.L["The target is on a floor below you."]) .. "|r"
+            absent = Colored(HEX_WARN, mainFloor == "up" and ns.L["The target is on a floor above you."] or ns.L["The target is on a floor below you."])
         elseif view.main and not view.catchup and R.AtGoal(view) then
             for _, entry in ipairs(P.Pending(route.s[view.main], player, route.id, view.main)) do
                 if entry.a[1] == "accept" or entry.a[1] == "turnin" then
-                    absent = "|cffffd133" .. ns.L["Nobody here? The NPC may be away or dead. Wait for the respawn or skip with >."] .. "|r"
+                    absent = Colored(HEX_WARN, ns.L["Nobody here? The NPC may be away or dead. Wait for the respawn or skip with >."])
                 end
             end
         end
-        -- Alle Hinweise des Schritts (höchstens 3), nicht nur der erste: "Klicke das Objekt an" steht oft
-        -- erst an zweiter Stelle. Hinweise mit einem anklickbaren Objekt zuerst.
+        -- Alle Hinweise des Schritts (höchstens hintCount), nicht nur der erste: "Klicke das Objekt an" steht
+        -- oft erst an zweiter Stelle. Hinweise mit einem anklickbaren Objekt zuerst.
         local tipText
         if main and main.h and ns.db.hints then
             local first, rest = {}, {}
@@ -689,7 +780,7 @@ local function Render(view)
         if absent then tipText = (tipText and (tipText .. "\n") or "") .. absent end
         if tipText then
             panel.tip:ClearAllPoints()
-            panel.tip:SetPoint("TOPLEFT", PAD + 2, y)
+            panel.tip:SetPoint("TOPLEFT", LEFT, y)
             panel.tip:SetText(tipText)
             panel.tip:Show()
             y = y - panel.tip:GetStringHeight() - 12
@@ -700,43 +791,50 @@ local function Render(view)
             local lines = {}
             for _, e in ipairs(P.Actions(route.s[nextSi], player)) do
                 local text = T.Action(e.a)
-                if text and P.BLOCKING[e.a[1]] and #lines < 2 then lines[#lines + 1] = "|cff5b6170›|r  " .. text end
+                if text and P.BLOCKING[e.a[1]] and #lines < 2 then lines[#lines + 1] = text end
             end
             if #lines > 0 then
+                Rule(y)
+                y = y - 10
                 panel.nextLabel:ClearAllPoints()
-                panel.nextLabel:SetPoint("TOPLEFT", PAD + 2, y)
+                panel.nextLabel:SetPoint("TOPLEFT", LEFT, y)
                 panel.nextLabel:Show()
                 panel.nextText:ClearAllPoints()
-                panel.nextText:SetPoint("TOPLEFT", PAD + 2, y - 15)
+                panel.nextText:SetPoint("TOPLEFT", LEFT, y - 18)
                 panel.nextText:SetText(table.concat(lines, "\n"))
                 panel.nextText:Show()
-                y = y - 22 - panel.nextText:GetStringHeight()
+                y = y - 24 - panel.nextText:GetStringHeight()
             end
         end
     else
         panel.travel:Hide()
     end
     for i = count + 1, #rows do rows[i]:Hide() end
+    for i = ruleCount + 1, #rules do rules[i]:Hide() end
 
     y = y - 4
     panel.buttons:ClearAllPoints()
-    panel.buttons:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -PAD, y)
-    panel.body:SetHeight(-y + 26 + PAD) -- nur die Hülle wächst, siehe Build
+    panel.buttons:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -RIGHT + 4, y)
+    -- nur die Hülle wächst, siehe Build; die Schiene verteilt sich über die neue Höhe
+    panel.bodyH = -y + 24 + 12
+    panel.body:SetHeight(panel.bodyH)
+    RenderRail(panel.railTotal, panel.railAt)
+    PlaceMark()
 end
 
 ns.On("VIEW", function(view) ns.Guard("Panel", Render, view) end)
 
 -------------------------------------------------------------------------------
--- Routenwahl (rundes Popup)
+-- Routenwahl
 -------------------------------------------------------------------------------
 local function TogglePicker(anchor)
     if picker and picker:IsShown() then picker:Hide() return end
     if not picker then
         picker = CreateFrame("Frame", "UltimaRoutePicker", panel)
         picker:SetFrameStrata("DIALOG")
-        ns.Round(picker, "shadow", 24, { 0, 0, 0, 0.9 }, "BACKGROUND", -1, 14)
-        ns.Round(picker, "round", 14, { 0.07, 0.075, 0.09, 0.97 }, "BACKGROUND")
-        ns.Round(picker, "ring", 14, C.cardBorder, "BORDER")
+        ns.Round(picker, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -1, 14)
+        ns.Round(picker, "round", TH.radius.panel, C.panel, "BACKGROUND")
+        ns.Round(picker, "ring", TH.radius.panel, C.cardBorder, "BORDER")
         picker.buttons = {}
     end
     for _, b in ipairs(picker.buttons) do b:Hide() end
@@ -753,43 +851,44 @@ local function TogglePicker(anchor)
     for _, kind in ipairs({ "route", "dungeonroute" }) do
         for _, r in ipairs(R.Candidates(player, kind)) do
             if r.hi >= player.level - 1 and r.lo <= player.level + 3 then
-                local tags = (kind == "dungeonroute" and "  |cff8a8f99" .. ns.L["Dungeon"] .. "|r" or "")
-                    .. (r.era and "  |cff8a8f99" .. ns.L["Classic"] .. "|r" or "")
+                local tags = (kind == "dungeonroute" and "  " .. Colored(HEX_MUTED, ns.L["Dungeon"]) or "")
+                    .. (r.era and "  " .. Colored(HEX_MUTED, ns.L["Classic"]) or "")
                 entries[#entries + 1] = { text = r.n .. tags, current = current == r.id,
                     fn = function() R.Load(r.id) end }
             end
         end
     end
-    local y = -10
+    local y = -8
     for i, entry in ipairs(entries) do
         local b = picker.buttons[i]
         if not b then
             b = CreateFrame("Button", nil, picker)
-            b:SetSize(WIDTH - 20, 26)
-            b.hl = ns.Round(b, "round", 8, { A1[1], A1[2], A1[3], 0.16 }, "BACKGROUND")
+            b:SetSize(WIDTH - 16, 26)
+            b.hl = ns.Round(b, "round", TH.radius.control, C.card, "BACKGROUND")
             b.hl:SetShown(false)
-            b.label = ns.Label(b, 13, C.text, "OVERLAY", "Medium")
-            b.label:SetPoint("LEFT", 12, 0)
+            b.label = Label(b, SZ.body, C.text2, "Medium")
+            b.label:SetPoint("LEFT", 10, 0)
             b:SetScript("OnEnter", function(self) self.hl:SetShown(true) end)
             b:SetScript("OnLeave", function(self) self.hl:SetShown(self.isCurrent and true or false) end)
             picker.buttons[i] = b
         end
         b.isCurrent = entry.current
         b.hl:SetShown(entry.current and true or false)
+        Paint(b.label, entry.current and C.text or C.text2)
         b.label:SetText(entry.text)
-        ns.Fit(b.label, WIDTH - 44, 10)
+        ns.Fit(b.label, WIDTH - 40, 10)
         b:SetScript("OnClick", function()
             picker:Hide()
             entry.fn()
             ns.RequestUpdate()
         end)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", 10, y)
+        b:SetPoint("TOPLEFT", 8, y)
         b:Show()
         y = y - 26
         if i == 2 then y = y - 8 end
     end
-    picker:SetSize(WIDTH, -y + 10)
+    picker:SetSize(WIDTH, -y + 8)
     picker:ClearAllPoints()
     picker:SetPoint("BOTTOMRIGHT", anchor, "TOPRIGHT", 0, 8)
     picker:Show()
@@ -805,9 +904,9 @@ local function Build()
     panel:SetScale(ns.db.window.scale or 1)
     panel:SetFrameStrata("MEDIUM")
     panel:SetClampedToScreen(true)
-    -- Das Fenster selbst hat eine feste Größe: an ihm hängen die geschützten Kacheln, und ein Rahmen,
-    -- an dem geschützte Knöpfe verankert sind, darf im Kampf weder Größe noch Lage ändern
-    -- (ADDON_ACTION_BLOCKED bei SetHeight). Hintergrund und Rand liegen deshalb auf einer eigenen Hülle,
+    -- Das Fenster selbst hat eine feste Größe: an ihm hängen die geschützten Spalten der Statusleiste, und
+    -- ein Rahmen, an dem geschützte Knöpfe verankert sind, darf im Kampf weder Größe noch Lage ändern
+    -- (ADDON_ACTION_BLOCKED bei SetHeight). Fläche und Schiene liegen deshalb auf einer eigenen Hülle,
     -- die frei mit dem Inhalt wächst.
     panel:SetHeight(FIXED_H)
     panel:SetFrameLevel(5)
@@ -817,9 +916,25 @@ local function Build()
     body:SetHeight(FIXED_H)
     body:SetFrameLevel(4) -- unter dem Fenster, damit die Hülle keine Texte verdeckt
     panel.body = body
-    ns.Round(body, "shadow", 30, { 0, 0, 0, 0.85 }, "BACKGROUND", -2, 18)
-    ns.Round(body, "round", 18, C.panel, "BACKGROUND", 0)
-    ns.Round(body, "ring", 18, C.cardBorder, "BORDER")
+    panel.bodyH = FIXED_H
+    ns.Round(body, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -2, 14)
+    ns.Round(body, "round", TH.radius.panel, C.panel, "BACKGROUND", 0)
+    -- Lichtkante oben (1 px, Weiß 6 %) statt Rahmen
+    local edge = body:CreateTexture(nil, "BORDER")
+    edge:SetTexture(ns.WHITE)
+    edge:SetHeight(1)
+    edge:SetPoint("TOPLEFT", TH.radius.panel, -1)
+    edge:SetPoint("TOPRIGHT", -TH.radius.panel, -1)
+    Paint(edge, TH.color.neutral, 0.06)
+    -- Schiene: Haarlinie rechts der 22-px-Spalte, Striche und Glutmarke entstehen in RenderRail
+    local railLine = Hairline(body, "BORDER")
+    railLine:SetWidth(1)
+    railLine:SetPoint("TOPLEFT", RAIL, 0)
+    railLine:SetPoint("BOTTOMLEFT", RAIL, 0)
+    panel.mark = body:CreateTexture(nil, "OVERLAY")
+    panel.mark:SetTexture(ns.WHITE)
+    panel.mark:SetSize(15, 3)
+    Paint(panel.mark, A1)
     body:EnableMouse(true)
     body:RegisterForDrag("LeftButton")
     body:SetScript("OnDragStart", function()
@@ -844,86 +959,73 @@ local function Build()
     if p then panel:SetPoint(p[1], UIParent, p[2], p[3], p[4]) else panel:SetPoint("TOPRIGHT", UIParent, "RIGHT", -60, 280) end
     panel:SetMovable(true) -- gezogen wird an der Hülle (body), im Kampf und bei gesperrter Lage nicht
 
-    -- Kopf: Logo-Kachel, Titel, Unterzeile, Level-Pille
-    local tile = CreateFrame("Frame", nil, panel)
-    tile:SetSize(40, 40)
-    tile:SetPoint("TOPLEFT", PAD, -PAD)
-    local logo = tile:CreateTexture(nil, "ARTWORK")
-    logo:SetTexture(ns.TEX .. "ulx_logo-128")
-    logo:SetAllPoints()
-    panel.title = ns.Label(panel, 18, C.text, "OVERLAY", "Bold")
-    panel.title:SetPoint("TOPLEFT", tile, "TOPRIGHT", 12, -2)
+    -- Kopf: Routenname in Zahlengröße, darunter der Schritt; rechts "Stufe" klein und das Level als Zahl
+    panel.title = Label(panel, SZ.figure, C.text, "Bold")
+    panel.title:SetPoint("TOPLEFT", LEFT, -12)
     panel.title:SetWordWrap(false)
-    panel.sub = ns.Label(panel, 11, C.text2, "OVERLAY", "Light")
-    panel.sub:SetPoint("TOPLEFT", panel.title, "BOTTOMLEFT", 0, -4)
-    panel.levelPill = CreateFrame("Frame", nil, panel)
-    panel.levelPill:SetSize(30, 24)
-    panel.levelPill:SetPoint("TOPRIGHT", -PAD, -PAD - 6)
-    ns.Round(panel.levelPill, "circle", 12, { A1[1], A1[2], A1[3], 0.16 }, "BACKGROUND")
-    panel.levelText = ns.Label(panel.levelPill, 13, A1, "OVERLAY", "Bold")
-    panel.levelText:SetPoint("CENTER", 0, 0)
+    panel.sub = Label(panel, SZ.small, C.text2, "Medium")
+    panel.sub:SetPoint("TOPLEFT", LEFT, -46)
+    panel.levelText = Label(panel, SZ.figure, C.text, "Bold")
+    panel.levelText:SetJustifyH("RIGHT")
+    panel.levelText:SetPoint("TOPRIGHT", -RIGHT, -12)
+    panel.levelLabel = Label(panel, SZ.small, C.text3, "Medium")
+    panel.levelLabel:SetJustifyH("RIGHT")
+    panel.levelLabel:SetPoint("TOPRIGHT", -RIGHT, -46)
+    panel.levelLabel:SetText(ns.L["Level"])
 
-    -- Routenfortschritt: feine Pille unter dem Kopf
-    panel.route = CreateFrame("Frame", nil, panel)
-    -- Routenfortschritt als feine Linie direkt unter der Unterzeile, nur so breit wie der Kopftext:
-    -- sie gehört zum Routennamen und konkurriert nicht mehr mit dem XP-Balken darunter.
-    panel.route:SetHeight(2)
-    panel.route:SetPoint("TOPLEFT", PAD + 52, -57)
-    panel.route:SetWidth(HEAD_W)
-    ns.Round(panel.route, "circle", 1.5, { 1, 1, 1, 0.06 }, "BACKGROUND")
-    panel.routeFill = CreateFrame("Frame", nil, panel.route)
-    panel.routeFill:SetPoint("TOPLEFT")
-    panel.routeFill:SetPoint("BOTTOMLEFT")
-    ns.Round(panel.routeFill, "circle", 1.5, { A2[1], A2[2], A2[3], 0.8 }, "ARTWORK")
-
-    -- XP: dicke Pille mit Erholt-Abschnitt
-    panel.xp = CreateFrame("Frame", nil, panel)
-    panel.xp:SetHeight(8)
-    panel.xp:SetPoint("TOPLEFT", PAD, -76)
-    panel.xp:SetPoint("TOPRIGHT", -PAD, -76)
-    ns.Round(panel.xp, "circle", 4, { 1, 1, 1, 0.07 }, "BACKGROUND")
-    panel.rest = CreateFrame("Frame", nil, panel.xp)
-    panel.rest:SetPoint("TOPLEFT")
-    panel.rest:SetPoint("BOTTOMLEFT")
-    ns.Round(panel.rest, "circle", 4, { C.rest[1], C.rest[2], C.rest[3], 0.45 }, "BORDER")
-    panel.xpFill = CreateFrame("Frame", nil, panel.xp)
-    panel.xpFill:SetPoint("TOPLEFT")
-    panel.xpFill:SetPoint("BOTTOMLEFT")
-    ns.Round(panel.xpFill, "circle", 4, { A1[1], A1[2], A1[3], 1 }, "ARTWORK")
-    panel.xpLeft = ns.Label(panel, 11, C.text2, "OVERLAY", "Medium")
+    -- XP: 4-px-Balken, Spur in der Linienfarbe, Füllung hell, Erholt in der Farbe des Spiels
+    panel.xp = Hairline(panel, "BORDER")
+    panel.xp:SetHeight(4)
+    panel.xp:SetPoint("TOPLEFT", LEFT, -70)
+    panel.xp:SetPoint("TOPRIGHT", -RIGHT, -70)
+    panel.rest = panel:CreateTexture(nil, "ARTWORK", nil, 1)
+    panel.rest:SetTexture(ns.WHITE)
+    panel.rest:SetHeight(4)
+    panel.rest:SetPoint("TOPLEFT", panel.xp, "TOPLEFT")
+    Paint(panel.rest, C.rest, 0.5)
+    panel.xpFill = panel:CreateTexture(nil, "ARTWORK", nil, 2)
+    panel.xpFill:SetTexture(ns.WHITE)
+    panel.xpFill:SetHeight(4)
+    panel.xpFill:SetPoint("TOPLEFT", panel.xp, "TOPLEFT")
+    Paint(panel.xpFill, C.text)
+    panel.xpLeft = Label(panel, SZ.small, C.text2, "Medium")
     panel.xpLeft:SetPoint("TOPLEFT", panel.xp, "BOTTOMLEFT", 0, -6)
-    panel.xpRight = ns.Label(panel, 11, C.rest, "OVERLAY", "Medium")
+    panel.xpRight = Label(panel, SZ.small, C.text2, "Medium")
     panel.xpRight:SetPoint("TOPRIGHT", panel.xp, "BOTTOMRIGHT", 0, -6)
     panel.xpRight:SetJustifyH("RIGHT")
+    -- Haarlinie über der Statusleiste
+    local statusRule = Hairline(panel, "BORDER")
+    statusRule:SetHeight(1)
+    statusRule:SetPoint("TOPLEFT", LEFT, TILE_Y + 8)
+    statusRule:SetPoint("TOPRIGHT", -RIGHT, TILE_Y + 8)
 
-    -- Reise-Karte
+    -- Reise
     panel.travel = CreateFrame("Frame", nil, panel)
-    ns.Round(panel.travel, "round", 12, C.card, "BACKGROUND", 1)
-    ns.Round(panel.travel, "ring", 12, { A2[1], A2[2], A2[3], 0.35 }, "BORDER")
-    panel.travelLabel = Overline(panel.travel, ns.L["TRAVEL"])
+    panel.travelLabel = Label(panel.travel, SZ.small, C.text3, "Medium")
+    panel.travelLabel:SetText(ns.L["TRAVEL"])
     panel.travel:Hide()
 
-    -- Hero-Karte
+    -- Jetzt: ohne Karte, die Haarlinie darüber trennt
     panel.hero = CreateFrame("Frame", nil, panel)
-    ns.Round(panel.hero, "round", 12, { A1[1], A1[2], A1[3], 0.07 }, "BACKGROUND", 1)
-    ns.Round(panel.hero, "ring", 12, { A1[1], A1[2], A1[3], 0.32 }, "BORDER")
-    panel.heroLabel = Overline(panel.hero, ns.L["NOW"])
-    panel.heroFade = ns.FadeIn(panel.hero, 0.3)
+    panel.heroLabel = Label(panel.hero, SZ.small, C.text3, "Medium")
+    panel.heroLabel:SetText(ns.L["NOW"])
+    panel.heroFade = ns.FadeIn(panel.hero, TH.motion.base)
 
-    panel.tip = ns.Label(panel, 12, C.text2, "OVERLAY", "Light")
-    panel.tip:SetWidth(WIDTH - 2 * PAD - 4)
+    panel.tip = Label(panel, SZ.small, C.text2, "Medium")
+    panel.tip:SetWidth(CW)
     panel.tip:SetWordWrap(true)
-    panel.alert = ns.Label(panel, 11, C.text2, "OVERLAY", "Medium")
+    panel.alert = Label(panel, SZ.small, C.text2, "Medium")
     panel.alert:Hide()
     BuildTiles()
-    panel.nextLabel = Overline(panel, ns.L["NEXT"])
-    panel.nextText = ns.Label(panel, 12, C.text2, "OVERLAY", "Medium")
-    panel.nextText:SetWidth(WIDTH - 2 * PAD - 4)
+    panel.nextLabel = Label(panel, SZ.small, C.text3, "Medium")
+    panel.nextLabel:SetText(ns.L["NEXT"])
+    panel.nextText = Label(panel, SZ.body, C.text2, "Medium")
+    panel.nextText:SetWidth(CW)
     panel.nextText:SetWordWrap(true)
 
-    -- Runde Glyph-Knoepfe unten rechts
+    -- Ruhige Symbol-Knöpfe unten rechts
     panel.buttons = CreateFrame("Frame", nil, panel)
-    panel.buttons:SetSize(5 * 26 + 4 * 6, 26)
+    panel.buttons:SetSize(5 * 24 + 4 * 4, 24)
     local fold = GlyphButton(ns.db.window.collapsed and "plus" or "minus", ns.L["Expand or collapse steps"], function(self)
         ns.db.window.collapsed = not ns.db.window.collapsed
         self.glyph:SetTexture(ns.TEX .. "ulx-glyph-" .. (ns.db.window.collapsed and "plus" or "minus"))
@@ -940,10 +1042,10 @@ local function Build()
     for i, b in ipairs({ backB, nextB, panel.listButton, optionsB, fold }) do
         b:SetParent(panel.buttons)
         b:ClearAllPoints()
-        b:SetPoint("LEFT", (i - 1) * 32, 0)
+        b:SetPoint("LEFT", (i - 1) * 28, 0)
     end
 
-    -- Kampf: abdunkeln
+    -- Kampf: abdunkeln; Schiene und Zahlen bleiben ruhig stehen
     panel:RegisterEvent("PLAYER_REGEN_DISABLED")
     panel:RegisterEvent("PLAYER_REGEN_ENABLED")
     panel:SetScript("OnEvent", function(self, event)
@@ -953,8 +1055,8 @@ local function Build()
         ns.ApplyPanelAlpha()
     end)
 
-    -- Balken gleiten weich (Slide, hängt sich nach Ankunft ab); der Inhalt wird bei jeder Auswertung
-    -- (VIEW) neu gezeichnet
+    -- Balken und Glutmarke gleiten weich (Slide, hängt sich nach Ankunft ab); der Inhalt wird bei jeder
+    -- Auswertung (VIEW) neu gezeichnet
     StartSlide()
     ns.panel = panel
     Render()

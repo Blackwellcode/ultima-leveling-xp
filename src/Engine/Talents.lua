@@ -252,7 +252,7 @@ end
 -- Anzeigename in einer Zeile: Baum, Aufteilung, Variante
 function T.BuildName(build, t)
     local variant = T.VariantName(build)
-    return T.SpecName(build, t) .. (variant and (" · " .. variant) or "")
+    return T.SpecName(build, t) .. (variant and (", " .. variant) or "")
 end
 
 -------------------------------------------------------------------------------

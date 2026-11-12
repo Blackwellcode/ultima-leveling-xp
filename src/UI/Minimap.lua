@@ -11,7 +11,7 @@ ns.On("READY", function()
     end
     local launcher = ldb:NewDataObject(ns.NAME, {
         type = "launcher",
-        text = "Ultima Leveling XP",
+        text = ns.TITLE,
         icon = ICON,
         OnClick = function(_, button)
             if button == "RightButton" then
@@ -27,10 +27,13 @@ ns.On("READY", function()
             end
         end,
         OnTooltipShow = function(tooltip)
-            tooltip:AddLine("Ultima Leveling XP")
+            tooltip:AddLine(ns.TITLE)
             local view = ns.view
-            if view and view.route then tooltip:AddLine(view.route.n, 0.2, 0.84, 0.69) end
-            tooltip:AddLine(ns.L["Left: window  ·  Right: options  ·  Shift: arrow"], 1, 1, 1)
+            if view and view.route then tooltip:AddLine(view.route.n, ns.COLORS.text[1], ns.COLORS.text[2], ns.COLORS.text[3]) end
+            local muted = ns.COLORS.text3
+            for _, line in ipairs({ ns.L["Left: window"], ns.L["Right: options"], ns.L["Shift: arrow"] }) do
+                tooltip:AddLine(line, muted[1], muted[2], muted[3])
+            end
         end,
     })
     icon:Register(ns.NAME, launcher, ns.db.minimap)

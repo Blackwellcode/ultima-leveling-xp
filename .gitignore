@@ -5,3 +5,4 @@ data/*
 !data/Talents.lua
 # lokale Werkzeug-Einstellungen
 .claude/
+prototype/

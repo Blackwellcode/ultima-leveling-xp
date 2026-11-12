@@ -4,8 +4,9 @@ local addonName, ns = ...
 
 ns.NAME = addonName
 ns.GAME = "FOREVER"
-ns.PREFIX = "|cff33d6b0Ultima:|r "
-ns.WARN = "|cffff4040Ultima:|r "
+ns.TITLE = "Ultima Leveling XP" -- Produktname, wird nicht übersetzt
+ns.PREFIX = "|cffff6a3dUltima:|r "
+ns.WARN = "|cffff5a4eUltima:|r "
 
 local DEFAULTS = {
     account = {

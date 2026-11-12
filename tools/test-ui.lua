@@ -91,7 +91,7 @@ end
 assert(loadfile("data/Travel.lua"))()
 assert(loadfile("data/Flights.lua"))()
 local ns = {}
-for _, f in ipairs({ "Core.lua", "Locale/Locale.lua", "Locale/enUS.lua", "Locale/deDE.lua", "Locale/frFR.lua", "Kit.lua", "Settings.lua", "Engine/Conditions.lua", "Engine/State.lua", "Engine/Progress.lua",
+for _, f in ipairs({ "Core.lua", "Locale/Locale.lua", "Locale/enUS.lua", "Locale/deDE.lua", "Locale/frFR.lua", "Theme.lua", "Kit.lua", "Settings.lua", "Engine/Conditions.lua", "Engine/State.lua", "Engine/Progress.lua",
     "Engine/Text.lua", "Engine/Runner.lua", "Engine/Travel.lua", "Engine/Paths.lua", "Engine/Talents.lua", "Data/Extra.lua", "Live.lua",
     "Auto.lua", "UI/Bonus.lua", "UI/Panel.lua", "UI/Item.lua", "Assist.lua", "UI/Nav.lua", "UI/Arrow.lua",
     "UI/Minimap.lua", "UI/Plates.lua", "UI/Talents.lua", "UI/Options.lua", "Slash.lua" }) do
@@ -128,8 +128,9 @@ check("Handlungszeilen gezeichnet", shownRows > 0, shownRows .. " Zeilen")
 check("Bonus-Chips im Panel (kein eigenes Fenster)", _G.UltimaWatcher == nil)
 check("Pfeil hat Wegpunkt und dreht", (function()
   UltimaArrow._OnUpdate(UltimaArrow, 1)
-  return UltimaArrow.tex._rot == 1.0 and UltimaArrow.dist._text == "320 m  ·  0:50"
-end)(), tostring(UltimaArrow.dist._text))
+  -- seit dem Hausstil: Entfernung als Zahl, Laufzeit in eigener Zeile darunter
+  return UltimaArrow.tex._rot == 1.0 and UltimaArrow.dist._text == "320 m" and UltimaArrow.time._text == "0:50"
+end)(), tostring(UltimaArrow.dist._text) .. " / " .. tostring(UltimaArrow.time and UltimaArrow.time._text))
 local before = ns.view.main
 SlashCmdList.ULTIMALEVELING("status")
 check("/ultima status nennt Route", out[#out]:find("13%-15 Westfall") ~= nil or out[#out - 1]:find("13%-15 Westfall") ~= nil)
@@ -491,9 +492,10 @@ ns.Runner.Shown = function() return { { route = loop, si = 1, kind = "main" } } 
 ns.db.lang = "enUS"; ns.ApplyLanguage(); ns.Update()
 local gotoRows, enemyRows, enemyText = 0, 0, nil
 for _, f in ipairs(created) do
-  if f.icon and f.text and f._shown and type(f.text._text) == "string" then
-    if f.text._text:find("^Go to ") then gotoRows = gotoRows + 1 end
-    if f.text._text:find("^Enemies: ") then enemyRows = enemyRows + 1; enemyText = f.text._text end
+  -- f.full ist der ganze Satz der Zeile; seit dem Hausstil steht das Verb in einer eigenen Spalte
+  if f.icon and f.text and f._shown and type(f.full) == "string" then
+    if f.full:find("^Go to ") then gotoRows = gotoRows + 1 end
+    if f.full:find("^Enemies: ") then enemyRows = enemyRows + 1; enemyText = f.full end
   end
 end
 check("Rundgang: genau eine Wegzeile", gotoRows == 1, gotoRows .. " Zeilen")

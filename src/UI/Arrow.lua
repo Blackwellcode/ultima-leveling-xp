@@ -1,5 +1,5 @@
--- Navigationspfeil im Keynote-Stil: runde Glasscheibe mit Verlaufsring, darin der Pfeil, darunter eine Pille
--- mit Entfernung und Laufzeit. Bei Kontinentwechsel führt er zum Hafen (ns.Travel), auf der Überfahrt
+-- Navigationspfeil im Hausstil: runde Graphitscheibe mit der Pfeilspitze im Akzent, darunter die Entfernung
+-- als Zahl und die Laufzeit klein. Bei Kontinentwechsel führt er zum Hafen (ns.Travel), auf der Überfahrt
 -- zeigt er das Schiff. Verschiebbar mit der Maus.
 local _, ns = ...
 local S = ns.State
@@ -9,9 +9,11 @@ local arrow
 
 local Clock, Meters = ns.Clock, ns.Meters
 
-local function SetLabel(self, text)
+local function SetLabel(self, text, sub)
     self.dist:SetText(text or "")
-    self.pill:SetWidth(self.dist:GetStringWidth() + 20)
+    self.time:SetText(sub or "")
+    self.pill:SetWidth(math.max(self.dist:GetStringWidth(), self.time:GetStringWidth()) + 16)
+    self.pill:SetHeight((sub and sub ~= "") and 48 or 34)
     self.pill:SetShown(text ~= nil and text ~= "")
 end
 
@@ -48,7 +50,8 @@ local function Update(self, elapsed)
             self.check:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
         end
         self.check:SetRotation(floor == "down" and math.pi or 0)
-        if floor then self.check:SetVertexColor(1, 0.82, 0.2) else self.check:SetVertexColor(ns.ACCENT[1], ns.ACCENT[2], ns.ACCENT[3]) end
+        local c = floor and ns.COLORS.warn or ns.COLORS.ok
+        self.check:SetVertexColor(c[1], c[2], c[3])
         self.check:Show()
         SetLabel(self, floor == "up" and ns.L["Upstairs"] or floor == "down" and ns.L["Downstairs"] or ns.L["At your destination"])
         return
@@ -74,13 +77,14 @@ local function Update(self, elapsed)
     self.tex:SetRotation(angle - facing)
     local radius = target.r and target.r > 0 and target.r or 10
     local near = dist <= radius
-    if near then self.tex:SetVertexColor(0.45, 1, 0.6) else self.tex:SetVertexColor(1, 1, 1) end
-    SetLabel(self, ("%s  ·  %s"):format(Meters(dist), Clock(dist / ns.RunSpeed())))
+    local c = near and ns.COLORS.ok or ns.ACCENT
+    self.tex:SetVertexColor(c[1], c[2], c[3])
+    SetLabel(self, Meters(dist), Clock(dist / ns.RunSpeed()))
 end
 
 local function Build()
     arrow = CreateFrame("Frame", "UltimaArrow", UIParent)
-    arrow:SetSize(76, 76)
+    arrow:SetSize(74, 74)
     local p = ns.db.arrow.point
     if p then arrow:SetPoint(p[1], UIParent, p[2], p[3], p[4]) else arrow:SetPoint("TOP", UIParent, "TOP", 0, -140) end
     arrow:SetMovable(true)
@@ -93,9 +97,9 @@ local function Build()
         local point, _, relPoint, x, y = self:GetPoint()
         ns.db.arrow.point = { point, relPoint, x, y }
     end)
-    local disc = arrow:CreateTexture(nil, "BACKGROUND")
-    disc:SetTexture(ns.TEX .. "ulx-disc")
-    disc:SetAllPoints()
+    -- Scheibe 74 px in der Fläche des Hauses, Rand in der Linienfarbe
+    ns.Round(arrow, "circle", 37, ns.COLORS.panel, "BACKGROUND")
+    ns.Round(arrow, "ring", 37, ns.COLORS.cardBorder, "BORDER")
     arrow.tex = arrow:CreateTexture(nil, "ARTWORK")
     arrow.tex:SetTexture(ns.TEX .. "ulx_navigation_arrow-1")
     arrow.tex:SetSize(44, 44)
@@ -104,21 +108,24 @@ local function Build()
     arrow.ship:SetTexture(ns.TEX .. "ulx-glyph-ship")
     arrow.ship:SetSize(34, 34)
     arrow.ship:SetPoint("CENTER")
-    arrow.ship:SetVertexColor(ns.ACCENT[1], ns.ACCENT[2], ns.ACCENT[3])
+    arrow.ship:SetVertexColor(ns.COLORS.text[1], ns.COLORS.text[2], ns.COLORS.text[3])
     arrow.ship:Hide()
     arrow.check = arrow:CreateTexture(nil, "ARTWORK")
     arrow.check:SetTexture(ns.TEX .. "ulx-glyph-check")
     arrow.check:SetSize(30, 30)
     arrow.check:SetPoint("CENTER")
-    arrow.check:SetVertexColor(ns.ACCENT[1], ns.ACCENT[2], ns.ACCENT[3])
+    arrow.check:SetVertexColor(ns.COLORS.ok[1], ns.COLORS.ok[2], ns.COLORS.ok[3])
     arrow.check:Hide()
     arrow.pill = CreateFrame("Frame", nil, arrow)
-    arrow.pill:SetHeight(22)
+    arrow.pill:SetHeight(48)
     arrow.pill:SetPoint("TOP", arrow, "BOTTOM", 0, -6)
-    ns.Round(arrow.pill, "circle", 11, { 0.055, 0.059, 0.071, 0.88 }, "BACKGROUND")
-    arrow.dist = ns.Label(arrow.pill, 13, ns.COLORS.text, "OVERLAY", "Medium")
-    arrow.dist:SetPoint("CENTER", 0, 0)
+    ns.Round(arrow.pill, "round", ns.Theme.radius.control, ns.COLORS.panel, "BACKGROUND")
+    arrow.dist = ns.Label(arrow.pill, ns.Theme.size.figure, ns.COLORS.text, "OVERLAY", "Bold")
+    arrow.dist:SetPoint("TOP", 0, -4)
     arrow.dist:SetJustifyH("CENTER")
+    arrow.time = ns.Label(arrow.pill, ns.Theme.size.small, ns.COLORS.text3, "OVERLAY", "Medium")
+    arrow.time:SetPoint("TOP", arrow.dist, "BOTTOM", 0, -1)
+    arrow.time:SetJustifyH("CENTER")
     arrow:SetScript("OnUpdate", function(self, elapsed) ns.Guard("Arrow", Update, self, elapsed) end)
     arrow:SetShown(ns.db.arrow.shown)
 end

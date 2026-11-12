@@ -184,8 +184,8 @@ kept (they live in the `WTF` folder).
 ## Compatibility
 
 - Made for the **WoW Forever** client (Interface 16001).
-- Works on its own. Optional: Questie (quest markers on nameplates), EllesmereUI (fonts, nameplate
-  border).
+- Works on its own and ships its own fonts. Optional: Questie (quest markers on nameplates), EllesmereUI
+  (nameplate border).
 - Nothing protected is touched in combat; buttons and window changes wait until combat ends.
 
 ## FAQ

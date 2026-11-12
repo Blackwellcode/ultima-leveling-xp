@@ -96,7 +96,7 @@ Lang("deDE", "enUS")
 check("deDE: Text", ns.F("Accept: %s", "X") == "Annehmen: X", ns.F("Accept: %s", "X"))
 check("deDE: Prozent bleibt Prozent", ns.F("Rested %d %%", 30) == "Erholt 30 %", ns.F("Rested %d %%", 30))
 Lang("frFR", "frFR")
-check("frFR: Text", ns.L["NOW"] == "MAINTENANT")
+check("frFR: Text", ns.L["NOW"] == "Maintenant")
 check("Fehlender Schlüssel zeigt den englischen Text", ns.L["Ultima-Test ohne Übersetzung"] == "Ultima-Test ohne Übersetzung")
 -- Jede Formatzeile (ns.F) lässt sich in jeder Sprache mit Beispielwerten formatieren
 local formatErrors = {}
