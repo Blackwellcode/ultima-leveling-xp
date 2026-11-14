@@ -118,8 +118,29 @@ local function Plan(a)
     DrawPins()
 end
 
+-- Ziel eines offenen Flug-Schritts in den angezeigten Schritten ("Flieg nach Westfall"), sonst nil
+local function FlightDestination(view)
+    if not (view and view.route) then return nil end
+    local player = S.Player()
+    for _, ref in ipairs(R.Shown(view)) do
+        for _, entry in ipairs(ns.Progress.Actions(ref.route.s[ref.si], player)) do
+            if entry.a[1] == "fly" and entry.a.to then return entry.a.to end
+        end
+    end
+    return nil
+end
+
 function Nav.Update(view)
     Nav.atGoal = view and R.AtGoal(view) or false
+    -- Im Flug (Greif, Windreiter): kein Ziel und keine Punkte. Sonst schlägt der Reiseplaner für das weite
+    -- Ziel "erst zum Flugmeister" vor, und Pfeil und Minimap zeigen die ganze Zeit zurück.
+    if UnitOnTaxi and UnitOnTaxi("player") then
+        Nav.onRide, Nav.rideIcon, Nav.flyTo = true, "fly", FlightDestination(view)
+        goalKey, goal, points = nil, nil, nil
+        ClearPins()
+        return
+    end
+    Nav.flyTo = nil
     local a, ride = GoalFromView(view)
     Nav.onRide = ride
     if not a then

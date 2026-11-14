@@ -51,6 +51,7 @@ ns.RegisterLocale("koKR", {
     ["Close"] = "닫기",
     ["Right-click: skip step"] = "오른쪽 클릭: 단계 건너뛰기",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "%s 퀘스트를 모두 모았습니다. %s(으)로 돌아갑니다.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "던전 하나의 퀘스트를 먼저 모으려면: 창 아래쪽의 문 모양 버튼.",
     ["Prepare a dungeon"] = "던전 준비",
     ["Back to %s"] = "%s(으)로 돌아가기",
@@ -59,6 +60,8 @@ ns.RegisterLocale("koKR", {
     ["Dungeon quests, step %d of %d"] = "던전 퀘스트, %d / %d 단계",
     ["Grey: done. White: in your quest log."] = "회색: 완료. 흰색: 퀘스트 목록에 있음.",
     ["No dungeon quests for your faction."] = "진영에 맞는 던전 퀘스트가 없습니다.",
+    ["Loot instantly"] = "즉시 획득",
+    ["With auto loot on, everything is picked up at once."] = "자동 획득이 켜져 있으면 모든 전리품을 한 번에 줍습니다.",
     ["No route"] = "경로 없음",
     ["Step %d of %d"] = "%d / %d 단계",
     ["%d postponed"] = "보류 %d",

@@ -57,6 +57,58 @@ local function Unavailable(q)
     return ns.cdb and ns.cdb.unavail and ns.cdb.unavail[q] == true
 end
 
+-------------------------------------------------------------------------------
+-- Questreihen aus den Routen-Daten: gibt ein Schritt Quest A ab und nimmt die gleichnamige Quest B an
+-- ("The Defias Brotherhood" 65 -> 132 -> 135 ...), ist B die Folgequest von A. Nur gleichnamige Quests,
+-- damit zwei unverwandte Quests beim selben NPC nicht verknüpft werden. Gebaut aus den englischen
+-- Rohtexten, vor der Übersetzung (Live.lua ruft P.BuildChains direkt nach dem Laden).
+-------------------------------------------------------------------------------
+local chainNext, chainRoutes = {}, nil
+
+local function ChainTitle(t)
+    if type(t) ~= "string" then return nil end
+    local title = t:match("^Accept%s+(.+)$") or t:match("^Turn%s+in%s+(.+)$")
+    return title and title:lower():gsub("[%s%.]+", " "):gsub("^%s+", ""):gsub("%s+$", "") or nil
+end
+
+function P.BuildChains(routes)
+    chainNext, chainRoutes = {}, routes
+    for _, r in ipairs(routes or {}) do
+        for _, s in ipairs(r.s) do
+            local turnins, accepts = {}, {}
+            for _, a in ipairs(s.a) do
+                if a.q and a[1] == "turnin" then turnins[#turnins + 1] = { a.q, ChainTitle(a.t) } end
+                if a.q and a[1] == "accept" then accepts[#accepts + 1] = { a.q, ChainTitle(a.t) } end
+            end
+            for _, t in ipairs(turnins) do
+                for _, n in ipairs(accepts) do
+                    if t[2] and t[2] == n[2] and t[1] ~= n[1] then
+                        chainNext[t[1]] = chainNext[t[1]] or {}
+                        chainNext[t[1]][n[1]] = true
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Ist die Reihe schon über Quest q hinaus? Eine spätere Quest der Reihe ist im Log oder abgegeben.
+function P.ChainAhead(q)
+    if chainRoutes ~= ns.routes then P.BuildChains(ns.routes) end
+    local seen, queue, head = { [q] = true }, { q }, 1
+    while queue[head] and head <= 60 do
+        for nextQ in pairs(chainNext[queue[head]] or {}) do
+            if not seen[nextQ] then
+                if S.OnQuest(nextQ) or S.TurnedIn(nextQ) then return true end
+                seen[nextQ] = true
+                queue[#queue + 1] = nextQ
+            end
+        end
+        head = head + 1
+    end
+    return false
+end
+
 local function Mark(routeId, si, ai)
     local m = ns.cdb and ns.cdb.marks[routeId]
     return m and m[si .. ":" .. ai]
@@ -76,7 +128,7 @@ end
 -- Erledigt-Pruefung je Handlung. ctx = { routeId, si, ai } für Ereignis-Marken.
 function P.Done(a, ctx)
     local tag = a[1]
-    if tag == "accept" then return S.OnQuest(a.q) or S.TurnedIn(a.q) or Unavailable(a.q) end
+    if tag == "accept" then return S.OnQuest(a.q) or S.TurnedIn(a.q) or Unavailable(a.q) or P.ChainAhead(a.q) end
     -- Abgabe einer Quest, die nicht im Log ist: nie angenommen oder abgebrochen, nichts abzugeben
     if tag == "turnin" then return S.TurnedIn(a.q) or not S.OnQuest(a.q) end
     if tag == "complete" then

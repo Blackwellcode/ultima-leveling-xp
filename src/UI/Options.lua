@@ -107,6 +107,8 @@ local CATEGORIES = {
           hint = "Never chooses between several rewards for you." },
         { type = "toggle", path = "autoTrain", label = "Buy the spells a step asks for" },
         { type = "toggle", path = "autoFly", label = "Pick the flight destination" },
+        { type = "toggle", path = "fastLoot", label = "Loot instantly",
+          hint = "With auto loot on, everything is picked up at once." },
         { type = "header", label = "Travel planner" },
         { type = "toggle", path = "travel.flights", label = "Suggest flights and Hearthstone" },
         { type = "step", path = "travel.minSaving", label = "Only if it saves at least", min = 30, max = 300, step = 30, fmt = "s" },

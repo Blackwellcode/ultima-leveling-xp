@@ -64,6 +64,7 @@ local function LoadRoutes()
     end
     ns.routes = UltimaRouteData or {}
     UltimaRouteData = nil
+    ns.Progress.BuildChains(ns.routes) -- Questreihen aus den englischen Rohtexten, vor der Übersetzung
     ns.ApplyRouteText()
     -- Eigene Zusatz-Routen (z. B. Schlafsack-Questreihe) der eigenen Fraktion anhaengen
     for _, r in ipairs(ns.BuildExtraRoutes()) do
@@ -89,7 +90,11 @@ local function DoUpdate()
         local back = ns.cdb.returnRoute
         ns.cdb.returnRoute = nil
         R.Load(back)
-        print(ns.PREFIX .. ns.F("Bonus route finished, continuing with %s", R.Get(back).n or back))
+        if view.route.k == "dungeonquests" then
+            print(ns.PREFIX .. ns.F("All quests for %s collected. Back to %s.", R.DisplayName(view.route), R.DisplayName(R.Get(back))))
+        else
+            print(ns.PREFIX .. ns.F("Bonus route finished, continuing with %s", R.Get(back).n or back))
+        end
         view = R.Evaluate()
     elseif view.finished and view.route then
         local nextId = R.Advance(view)
@@ -211,7 +216,11 @@ local function OnEvent(_, event, a1, a2, a3)
     elseif event == "BAG_UPDATE_DELAYED" or event == "GET_ITEM_INFO_RECEIVED" then
         ns.Bonus.BagsChanged()
     elseif event == "PLAYER_CONTROL_LOST" then
-        C_Timer.After(1, function() onTaxi = UnitOnTaxi("player") end)
+        -- Flug begonnen? Dann neu auswerten: Pfeil und Minimap zeigen den Flug statt zurück zum Flugmeister
+        C_Timer.After(1, function()
+            onTaxi = UnitOnTaxi("player")
+            if onTaxi then ns.RequestUpdate() end
+        end)
         return
     elseif event == "PLAYER_CONTROL_GAINED" then
         if onTaxi then

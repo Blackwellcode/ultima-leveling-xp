@@ -722,7 +722,8 @@ local function Render(view)
                     if entry.a[1] == "target" then
                         text = nil
                     elseif entry.a[1] == "goto" and not entry.a.t then
-                        entry.text = ns.F("Go to %s", Colored(HEX_ACCENT, ns.NPC(npc)))
+                        -- der NPC dieses Wegpunkts, nicht der erste des Schritts (zwei NPCs, zwei Orte)
+                        entry.text = ns.F("Go to %s", Colored(HEX_ACCENT, ns.NPC(R.GotoNpc(actions, entry) or npc)))
                     end
                 elseif object and entry.a[1] == "goto" and not entry.a.t then
                     entry.text = ns.F("Go to %s", Colored(HEX_ACCENT, object))

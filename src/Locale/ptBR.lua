@@ -51,6 +51,7 @@ ns.RegisterLocale("ptBR", {
     ["Close"] = "Fechar",
     ["Right-click: skip step"] = "Clique direito: pular passo",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "Todas as missões para %s reunidas. De volta a %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "Para juntar antes todas as missões de uma masmorra: o botão do portão embaixo na janela.",
     ["Prepare a dungeon"] = "Preparar uma masmorra",
     ["Back to %s"] = "Voltar para %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("ptBR", {
     ["Dungeon quests, step %d of %d"] = "Missões de masmorra, passo %d de %d",
     ["Grey: done. White: in your quest log."] = "Cinza: feita. Branco: no seu registro de missões.",
     ["No dungeon quests for your faction."] = "Nenhuma missão de masmorra para a sua facção.",
+    ["Loot instantly"] = "Saque instantâneo",
+    ["With auto loot on, everything is picked up at once."] = "Com o saque automático, tudo é pego de uma vez.",
     ["No route"] = "Sem rota",
     ["Step %d of %d"] = "Passo %d de %d",
     ["%d postponed"] = "%d adiadas",

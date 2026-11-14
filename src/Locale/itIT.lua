@@ -51,6 +51,7 @@ ns.RegisterLocale("itIT", {
     ["Close"] = "Chiudi",
     ["Right-click: skip step"] = "Clic destro: salta il passo",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "Tutte le missioni per %s raccolte. Si torna a %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "Per raccogliere prima tutte le missioni di una spedizione: il pulsante a forma di portale in basso nella finestra.",
     ["Prepare a dungeon"] = "Prepara una spedizione",
     ["Back to %s"] = "Torna a %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("itIT", {
     ["Dungeon quests, step %d of %d"] = "Missioni della spedizione, passo %d di %d",
     ["Grey: done. White: in your quest log."] = "Grigio: fatta. Bianco: nel registro missioni.",
     ["No dungeon quests for your faction."] = "Nessuna missione di spedizione per la tua fazione.",
+    ["Loot instantly"] = "Bottino istantaneo",
+    ["With auto loot on, everything is picked up at once."] = "Con il bottino automatico, tutto viene raccolto in una volta.",
     ["No route"] = "Nessun percorso",
     ["Step %d of %d"] = "Passo %d di %d",
     ["%d postponed"] = "%d rimandate",

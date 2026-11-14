@@ -51,6 +51,7 @@ ns.RegisterLocale("frFR", {
     ["Close"] = "Fermer",
     ["Right-click: skip step"] = "Clic droit : passer l'étape",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "Toutes les quêtes pour %s sont réunies. Retour à %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "Pour réunir d'abord toutes les quêtes d'un donjon : le bouton en forme de porte en bas de la fenêtre.",
     ["Prepare a dungeon"] = "Préparer un donjon",
     ["Back to %s"] = "Retour à %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("frFR", {
     ["Dungeon quests, step %d of %d"] = "Quêtes de donjon, étape %d sur %d",
     ["Grey: done. White: in your quest log."] = "Gris : faite. Blanc : dans ton journal de quêtes.",
     ["No dungeon quests for your faction."] = "Aucune quête de donjon pour ta faction.",
+    ["Loot instantly"] = "Butin instantané",
+    ["With auto loot on, everything is picked up at once."] = "Avec le butin automatique, tout est ramassé d'un coup.",
     ["No route"] = "Aucun itinéraire",
     ["Step %d of %d"] = "Étape %d sur %d",
     ["%d postponed"] = "%d en attente",

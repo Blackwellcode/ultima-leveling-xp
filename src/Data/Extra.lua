@@ -30,8 +30,9 @@ end
 local function Route(faction, first, second)
     local steps = { first, second }
     for _, s in ipairs(Common()) do steps[#steps + 1] = s end
+    -- chain: lineare Questreihe, jeder Schritt folgt aus dem vorigen (Runner: nie überspringen oder zurückstellen)
     return { id = faction .. ":extra:Schlafsack-Questreihe", n = L["Sleeping bag quest chain"], f = faction, k = "extra",
-        lo = 14, hi = 60, s = steps }
+        lo = 14, hi = 60, chain = true, s = steps }
 end
 
 function ns.BuildExtraRoutes()

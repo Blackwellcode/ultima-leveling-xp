@@ -51,6 +51,7 @@ ns.RegisterLocale("zhTW", {
     ["Close"] = "關閉",
     ["Right-click: skip step"] = "右鍵：跳過此步",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "%s 的任務已全部收集。返回 %s。",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "想先收集某個地城的全部任務：視窗底部的大門按鈕。",
     ["Prepare a dungeon"] = "準備地城",
     ["Back to %s"] = "返回 %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("zhTW", {
     ["Dungeon quests, step %d of %d"] = "地城任務，第 %d / %d 步",
     ["Grey: done. White: in your quest log."] = "灰色：已完成。白色：在任務日誌中。",
     ["No dungeon quests for your faction."] = "你的陣營沒有地城任務。",
+    ["Loot instantly"] = "瞬間拾取",
+    ["With auto loot on, everything is picked up at once."] = "開啟自動拾取時，一次拾取全部物品。",
     ["No route"] = "無路線",
     ["Step %d of %d"] = "第 %d / %d 步",
     ["%d postponed"] = "已擱置 %d",

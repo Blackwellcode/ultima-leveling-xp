@@ -51,6 +51,7 @@ ns.RegisterLocale("zhCN", {
     ["Close"] = "关闭",
     ["Right-click: skip step"] = "右键：跳过此步",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "%s 的任务已全部收集。返回 %s。",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "想先收集某个地下城的全部任务：窗口底部的大门按钮。",
     ["Prepare a dungeon"] = "准备地下城",
     ["Back to %s"] = "返回 %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("zhCN", {
     ["Dungeon quests, step %d of %d"] = "地下城任务，第 %d / %d 步",
     ["Grey: done. White: in your quest log."] = "灰色：已完成。白色：在任务日志中。",
     ["No dungeon quests for your faction."] = "你的阵营没有地下城任务。",
+    ["Loot instantly"] = "瞬间拾取",
+    ["With auto loot on, everything is picked up at once."] = "开启自动拾取时，一次拾取全部物品。",
     ["No route"] = "无路线",
     ["Step %d of %d"] = "第 %d / %d 步",
     ["%d postponed"] = "已搁置 %d",

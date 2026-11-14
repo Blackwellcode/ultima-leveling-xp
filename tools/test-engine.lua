@@ -398,5 +398,66 @@ for _, r in ipairs(ns.routes) do
   end
 end
 check("Datenbank: alle Fertigkeits-Bedingungen mit Beruf und Stufe", skillTotal > 0 and skillOk == skillTotal, skillOk .. "/" .. skillTotal)
+-------------------------------------------------------------------------------
+-- Schlafsack-Questreihe (2026-11-13): "Bonus route finished" mitten in der Kette. Zustand aus den
+-- SavedVariables: Zeiger 3 (Abgabe 79192, Annahme 79980), Rückweg zur Leveling-Route gemerkt.
+-------------------------------------------------------------------------------
+load("src/Data/Extra.lua")
+for _, r in ipairs(ns.BuildExtraRoutes()) do
+    if r.f == "A" then ns.routes[#ns.routes + 1] = r end
+end
+R.Reindex()
+local BAG = ns.SLEEPING_BAG_ROUTE.Alliance
+local BACK = "A:route:16-19 Darkshore"
+local function BagState()
+    ResetWorld(18)
+    ns.cdb.route, ns.cdb.returnRoute = BAG, BACK
+    ns.cdb.pointer[BAG] = 3
+    W.turned[79008] = true
+end
+check("Schlafsack-Route geladen", R.Get(BAG) ~= nil)
+
+-- a) Questziel offen, keine Nachhol-Quelle: die Abgabe darf nicht zurückgestellt werden, sonst ist die
+--    Kette ohne offenen Schritt und meldet sich fertig.
+BagState()
+W.onLog[79192] = true
+local realOpen = S.HasOpenObjectives
+S.HasOpenObjectives = function(q) if q == 79192 then return true end return realOpen(q) end
+v = R.Evaluate()
+check("Schlafsack: Quest mit offenem Ziel -> nicht fertig, Schritt 3 bleibt",
+    not v.finished and v.main == 3 and v.waiting == 0,
+    "fertig " .. tostring(v.finished) .. ", Schritt " .. tostring(v.main) .. ", wartend " .. v.waiting)
+S.HasOpenObjectives = realOpen
+
+-- b) Quest gerade abgegeben, Abschluss-Flag noch nicht gesetzt (oder Quest nicht im Log): die
+--    Folgeschritte gelten nicht als "Kette nie begonnen".
+BagState()
+v = R.Evaluate()
+check("Schlafsack: Quest weder im Log noch abgegeben -> nicht fertig",
+    not v.finished and v.main == 3, "fertig " .. tostring(v.finished) .. ", Schritt " .. tostring(v.main))
+
+-- c) Mitten in der Kette neu gestartet: Stand ergibt sich aus dem Questlog
+BagState()
+ns.cdb.pointer[BAG] = nil
+W.turned[79192], W.onLog[79980] = true, true
+v = R.Evaluate()
+check("Schlafsack: Neustart mit 79980 im Log -> Abgabe 79980 (Schritt 4)", not v.finished and v.main == 4,
+    "Schritt " .. tostring(v.main))
+
+-- d) Ganze Kette abgegeben: fertig
+BagState()
+for _, q in ipairs({ 79192, 79980, 79974, 79975, 79976 }) do W.turned[q] = true end
+v = R.Evaluate()
+check("Schlafsack: alle Quests abgegeben -> fertig", v.finished == true, "Schritt " .. tostring(v.main))
+
+-- e) Durchspielen ab Zeiger 3 ohne Haenger und ohne vorzeitiges Ende
+BagState()
+W.onLog[79192] = true
+local _, bagErr, bagView = PlayRoute(200)
+check("Schlafsack: ab Schritt 3 bis zur letzten Abgabe durchgespielt",
+    bagErr == nil and bagView and bagView.finished and W.turned[79976] == true,
+    bagErr or ("79976 abgegeben: " .. tostring(W.turned[79976])))
+ns.cdb.route, ns.cdb.returnRoute = nil, nil
+
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)

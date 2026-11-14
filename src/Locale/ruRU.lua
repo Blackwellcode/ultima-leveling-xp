@@ -51,6 +51,7 @@ ns.RegisterLocale("ruRU", {
     ["Close"] = "Закрыть",
     ["Right-click: skip step"] = "Правый щелчок: пропустить шаг",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "Все задания для %s собраны. Возврат к %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "Чтобы сначала собрать все задания подземелья: кнопка с воротами внизу окна.",
     ["Prepare a dungeon"] = "Подготовить подземелье",
     ["Back to %s"] = "Назад к %s",
@@ -59,6 +60,8 @@ ns.RegisterLocale("ruRU", {
     ["Dungeon quests, step %d of %d"] = "Задания подземелья, шаг %d из %d",
     ["Grey: done. White: in your quest log."] = "Серый: выполнено. Белый: в журнале заданий.",
     ["No dungeon quests for your faction."] = "Нет заданий подземелий для твоей фракции.",
+    ["Loot instantly"] = "Мгновенная добыча",
+    ["With auto loot on, everything is picked up at once."] = "При автодобыче всё забирается сразу.",
     ["No route"] = "Нет маршрута",
     ["Step %d of %d"] = "Шаг %d из %d",
     ["%d postponed"] = "отложено: %d",

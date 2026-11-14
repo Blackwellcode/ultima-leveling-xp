@@ -93,7 +93,7 @@ assert(loadfile("data/Flights.lua"))()
 local ns = {}
 for _, f in ipairs({ "Core.lua", "Locale/Locale.lua", "Locale/enUS.lua", "Locale/deDE.lua", "Locale/frFR.lua", "Theme.lua", "Kit.lua", "Settings.lua", "Engine/Conditions.lua", "Engine/State.lua", "Engine/Progress.lua",
     "Engine/Text.lua", "Engine/Runner.lua", "Engine/Travel.lua", "Engine/Paths.lua", "Engine/Talents.lua", "Data/Extra.lua", "Live.lua",
-    "Auto.lua", "UI/Bonus.lua", "UI/Panel.lua", "UI/Item.lua", "Assist.lua", "UI/Nav.lua", "UI/Arrow.lua",
+    "Auto.lua", "Loot.lua", "UI/Bonus.lua", "UI/Panel.lua", "UI/Item.lua", "Assist.lua", "UI/Nav.lua", "UI/Arrow.lua",
     "UI/Minimap.lua", "UI/Plates.lua", "UI/Talents.lua", "UI/Options.lua", "UI/Welcome.lua", "Slash.lua" }) do
   assert(loadfile("src/" .. f))("UltimaLevelingXP", ns)
 end
@@ -944,6 +944,198 @@ do
   check("Knöpfe: Anleitung erklärt jeden Knopf", UltimaWelcome.buttonsPage ~= nil and #UltimaWelcome.buttonsPage.items == 8,
     tostring(UltimaWelcome.buttonsPage and #UltimaWelcome.buttonsPage.items))
   UltimaWelcome:Hide()
+end
+
+-- Schritt mit zwei Wegpunkten und zwei NPCs (Deadmines-Vorbereitung Schritt 9, Screenshot 2026-11-14):
+-- jeder Wegpunkt gehört zu seinem NPC (Shoni, dann Wilder), nicht beide zum ersten
+do
+  local R, P = ns.Runner, ns.Progress
+  local dm = R.Get("A:dungeonquests:03. The Deadmines")
+  local actions = dm and P.Actions(dm.s[9], ns.State.Player()) or {}
+  local gotos = {}
+  for _, e in ipairs(actions) do if e.a[1] == "goto" then gotos[#gotos + 1] = e end end
+  check("Wegpunkt-NPC: erster Wegpunkt gehört zu Shoni", #gotos == 2 and R.GotoNpc and R.GotoNpc(actions, gotos[1]) == "Shoni the Shilent",
+    tostring(R.GotoNpc and gotos[1] and R.GotoNpc(actions, gotos[1])))
+  check("Wegpunkt-NPC: zweiter Wegpunkt gehört zu Wilder", #gotos == 2 and R.GotoNpc and R.GotoNpc(actions, gotos[2]) == "Wilder Thistlenettle",
+    tostring(R.GotoNpc and gotos[2] and R.GotoNpc(actions, gotos[2])))
+end
+
+-- Automatik im alten Begrüßungsfenster: Quest noch nicht im Spiel-Cache (kein Titel per ID), der Name
+-- aus den Routen-Daten reicht für die Annahme
+do
+  local R = ns.Runner
+  local onQuest, flagged, title = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetTitleForQuestID
+  C_QuestLog.IsOnQuest = function(q) return q == 2040 or q == 141 end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 65 or q == 132 or q == 135 end
+  C_QuestLog.GetTitleForQuestID = function() return nil end
+  R.StartBonus("A:dungeonquests:03. The Deadmines")
+  ns.Update()
+  local picked
+  GetNumActiveQuests = function() return 0 end
+  GetActiveTitle = function() return nil end
+  GetNumAvailableQuests = function() return 2 end
+  GetAvailableTitle = function(i) return i == 1 and "Collecting Memories" or "Something else" end
+  SelectAvailableQuest = function(i) picked = i end
+  fire("QUEST_GREETING")
+  check("Automatik: Begrüßungsfenster nimmt Routen-Quest ohne Spiel-Cache an", ns.view.main == 9 and picked == 1,
+    "Schritt " .. tostring(ns.view.main) .. ", gewählt " .. tostring(picked))
+  check("Automatik: Entscheidung steht im Protokoll", type(ns.db.autoLog) == "table" and #ns.db.autoLog > 0
+    and tostring(ns.db.autoLog[#ns.db.autoLog]):find("QUEST_GREETING", 1, true) ~= nil,
+    tostring(ns.db.autoLog and ns.db.autoLog[#ns.db.autoLog]))
+  R.EndBonus()
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted, C_QuestLog.GetTitleForQuestID = onQuest, flagged, title
+end
+
+-- Im Greifenflug (Deadmines-Vorbereitung Schritt 10, Screenshot 2026-11-14 00:42): Pfeil und Minimap zeigen
+-- nicht zurück zum Greifenmeister, der Pfeil zeigt den Flug
+do
+  local R = ns.Runner
+  local onQuest, flagged, onTaxi = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted, UnitOnTaxi
+  local pos = { playerPos[1], playerPos[2], playerPos[3] }
+  C_QuestLog.IsOnQuest = function(q) return q == 141 or q == 2040 or q == 167 or q == 168 end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 65 or q == 132 or q == 135 end
+  R.StartBonus("A:dungeonquests:03. The Deadmines")
+  -- kurz nach dem Abflug: gut 200 Yards vom Greifenmeister (490/-8836), über Stormwind
+  playerPos[1], playerPos[2], playerPos[3] = 650, -9000, 0
+  -- gestartet in Stormwind (Westfall noch nicht erreicht, sonst entfiele der Schritt per zoneskip)
+  local bestMap, zoneText = C_Map.GetBestMapForUnit, GetRealZoneText
+  C_Map.GetBestMapForUnit = function() return 1453 end
+  GetRealZoneText = function() return "Stormwind City" end
+  UnitOnTaxi = function(unit) return unit == "player" end
+  ns.Update()
+  -- Schritt 10 (Flug) trägt "erledigt mit nächstem": Hauptschritt ist Gryan in Westfall (11), der Flug läuft mit
+  local withFlight = false
+  for _, si in ipairs(ns.view.with) do if si == 10 then withFlight = true end end
+  check("Greifenflug: Hauptschritt Westfall, Flug läuft mit", ns.view.main == 11 and withFlight,
+    tostring(ns.view.main) .. ", mit " .. table.concat(ns.view.with, ","))
+  -- der Reiseplaner darf im Flug keinen Weg "erst zum Greifenmeister" vorschlagen
+  local target = ns.Nav.Target()
+  check("Greifenflug: kein Ziel zurück zum Greifenmeister", target == nil,
+    target and ("%.0f/%.0f"):format(target.x, target.y) or "keines")
+  UltimaArrow._OnUpdate(UltimaArrow, 1)
+  check("Greifenflug: Pfeil zeigt den Flug statt einer Richtung", ns.Nav.onRide == true and UltimaArrow.ship._shown == true
+    and not UltimaArrow.tex._shown, "onRide=" .. tostring(ns.Nav.onRide) .. ", Text " .. tostring(UltimaArrow.dist._text))
+  -- gelandet: kein Flug mehr, Pfeil führt wieder (zu Gryan in Westfall)
+  UnitOnTaxi = function() return false end
+  ns.Update()
+  check("Greifenflug: nach der Landung führt der Pfeil wieder", ns.Nav.onRide == false and ns.Nav.Target() ~= nil,
+    "onRide=" .. tostring(ns.Nav.onRide))
+  UnitOnTaxi = onTaxi
+  C_Map.GetBestMapForUnit, GetRealZoneText = bestMap, zoneText
+  R.EndBonus()
+  playerPos[1], playerPos[2], playerPos[3] = pos[1], pos[2], pos[3]
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+  ns.Update()
+end
+
+-- Fast Loot: bei automatischem Plündern alle Beuteplätze sofort aufnehmen, sonst nichts anfassen
+do
+  local looted = {}
+  GetNumLootItems = function() return 3 end
+  GetLootSlotInfo = function(i) return nil, "Item " .. i, 1, nil, 1, i == 2 end -- Platz 2 gesperrt
+  LootSlot = function(i) looted[#looted + 1] = i end
+  GetCVarBool = function(name) return name == "autoLootDefault" end
+  IsModifiedClick = function() return false end
+  GetTime = GetTime or function() return 0 end
+  local now = 100
+  local getTime = GetTime
+  GetTime = function() now = now + 1 return now end
+  ns.db.fastLoot = true
+  fire("LOOT_READY", true)
+  check("Fast Loot: alle freien Plätze sofort aufgenommen", table.concat(looted, ",") == "3,1", table.concat(looted, ","))
+  looted = {}
+  fire("LOOT_READY", false)
+  check("Fast Loot: ohne automatisches Plündern nichts angefasst", #looted == 0, table.concat(looted, ","))
+  looted = {}
+  ns.db.fastLoot = false
+  fire("LOOT_READY", true)
+  check("Fast Loot: abschaltbar", #looted == 0)
+  ns.db.fastLoot = true
+  GetTime = getTime
+end
+
+-- Dungeon-Vorbereitung endet, sobald alle Quests für den Dungeon im Questlog sind (Vorgabe Spieler
+-- 2026-11-14 02:19): Dungeon und Abgabe gehören nicht mehr dazu. Spielstand Deadmines 02:13: Westfall-Kette
+-- abgegeben, 2040, 214 und 166 im Log, Schritt 9 (Oh Brother, Collecting Memories) übersprungen.
+-- Übersprungene Annahmen zählen nicht als gesammelt (Spieler 02:20: "die quests fehlen noch"): die
+-- Vorbereitung führt zurück zu Wilder, auch wenn der Zeiger schon bei 26 steht.
+do
+  local R, S = ns.Runner, ns.State
+  local id = "A:dungeonquests:03. The Deadmines"
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  local playerWorld = S.PlayerWorld
+  local done = { [65] = true, [132] = true, [135] = true, [141] = true, [142] = true, [155] = true }
+  local active = { [214] = true, [166] = true }
+  C_QuestLog.IsOnQuest = function(q) return active[q] == true end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return done[q] == true end
+  S.PlayerWorld = function() return 1045.29, -10508.78, 0 end -- Sentinel Hill, bei Gryan Stoutmantle
+  R.Load("A:route:13-15 Westfall")
+  R.StartBonus(id)
+  ns.cdb.manual[id] = { [9] = true } -- der Spieler hat Schritt 9 (Oh Brother, Collecting Memories) übersprungen
+  ns.Update()
+  check("Dungeon-Vorbereitung: ohne Underground Assault noch nicht fertig", ns.cdb.route == id, tostring(ns.cdb.route))
+  active[2040] = true -- Shoni hat Underground Assault gegeben, Oh Brother und Collecting Memories fehlen
+  ns.cdb.pointer[id] = 26
+  ns.Update()
+  check("Dungeon-Vorbereitung: übersprungene Quests fehlen -> zurück zu Wilder (Schritt 9)", ns.cdb.route == id
+    and ns.view.main == 9, tostring(ns.cdb.route) .. " Schritt " .. tostring(ns.view.main))
+  local outBefore = #out
+  active[167], active[168] = true, true -- jetzt hat Wilder beide Quests gegeben
+  ns.Update()
+  check("Dungeon-Vorbereitung: alle Quests im Log -> zurück zur Leveling-Route", ns.cdb.route == "A:route:13-15 Westfall"
+    and ns.cdb.returnRoute == nil, tostring(ns.cdb.route))
+  check("Dungeon-Vorbereitung: Meldung nennt den Dungeon", table.concat(out, " | ", outBefore + 1):find("The Deadmines", 1, true) ~= nil,
+    table.concat(out, " | ", outBefore + 1))
+  S.PlayerWorld = playerWorld
+  ns.cdb.manual[id] = nil
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Wegpunkt ohne offene Arbeit (Screenshot 02:28): Underground Assault ist schon im Log, der Pfeil darf nicht
+-- erst zu Shoni führen, sondern direkt zu Wilder (Oh Brother, Collecting Memories)
+do
+  local R, S = ns.Runner, ns.State
+  local id = "A:dungeonquests:03. The Deadmines"
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  local playerWorld = S.PlayerWorld
+  local done = { [65] = true, [132] = true, [135] = true }
+  local active = { [141] = true, [2040] = true }
+  C_QuestLog.IsOnQuest = function(q) return active[q] == true end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return done[q] == true end
+  S.PlayerWorld = function() return 490.03, -8835.82, 0 end -- Greifenmeister Stormwind, weit von beiden
+  R.Load("A:route:13-15 Westfall")
+  R.StartBonus(id)
+  ns.Update()
+  local wp = R.Waypoint(ns.view)
+  check("Wegpunkt: erledigter Ort (Shoni) wird übersprungen, Pfeil zu Wilder", ns.view.main == 9 and wp ~= nil
+    and math.floor(wp.x) == 501, "Schritt " .. tostring(ns.view.main) .. ", Wegpunkt x " .. tostring(wp and math.floor(wp.x)))
+  active[2040] = nil -- ohne Underground Assault: erst zu Shoni
+  ns.Update()
+  wp = R.Waypoint(ns.view)
+  check("Wegpunkt: offene Arbeit bei Shoni -> Pfeil zu Shoni", wp ~= nil and math.floor(wp.x) == 634,
+    "Wegpunkt x " .. tostring(wp and math.floor(wp.x)))
+  S.PlayerWorld = playerWorld
+  R.EndBonus()
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Stand in einer Questreihe (Spieler 02:31): "The Defias Brotherhood" 142 ist im Log, die Vorgänger 65 bis 141
+-- meldet das Spiel nicht als abgegeben. Die Vorbereitung beginnt beim Stand der Reihe, nicht bei Quest 65.
+do
+  local R, P = ns.Runner, ns.Progress
+  local id = "A:dungeonquests:03. The Deadmines"
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  C_QuestLog.IsOnQuest = function(q) return q == 142 end
+  C_QuestLog.IsQuestFlaggedCompleted = function() return false end
+  check("Questreihe: Vorgänger 65 gilt als erledigt, wenn 142 im Log ist", P.Done({ "accept", q = 65 }))
+  check("Questreihe: fremde Quest (Underground Assault) bleibt offen", not P.Done({ "accept", q = 2040 }))
+  R.Load("A:route:13-15 Westfall")
+  R.StartBonus(id)
+  ns.Update()
+  check("Questreihe: Vorbereitung beginnt beim Stand der Reihe", ns.view.main ~= nil and ns.view.main >= 9,
+    "Schritt " .. tostring(ns.view.main))
+  R.EndBonus()
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
 end
 
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))

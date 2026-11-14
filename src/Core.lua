@@ -25,6 +25,7 @@ local DEFAULTS = {
         autoQuest = true,      -- Quests der Route automatisch annehmen und abgeben (Umschalt setzt aus)
         autoTrain = true,      -- beim Lehrer die verlangten Zauber kaufen
         autoFly = true,        -- beim Flugmeister das Ziel wählen
+        fastLoot = true,       -- bei automatischem Plündern alles sofort aufnehmen (src/Loot.lua)
         travel = { flights = true, minSaving = 90 }, -- Reiseplaner: Flug/Ruhestein ab so vielen Sekunden Ersparnis
         tiles = { shown = true },
         announce = true,       -- verlorene Boni und Gefahren in der Bildschirmmitte melden

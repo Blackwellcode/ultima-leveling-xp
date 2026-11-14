@@ -42,7 +42,16 @@ local function Update(self, elapsed)
             self.ship:SetTexture(ns.TEX .. "ulx-glyph-" .. glyph)
         end
         self.ship:Show()
-        SetLabel(self, icon == "fly" and ns.L["Take the flight"] or icon == "home" and ns.L["Use your Hearthstone"] or ns.L["Crossing"])
+        -- schon in der Luft: das Flugziel nennen ("Flug nach Westfall"), sonst die Aufforderung
+        local text
+        if ns.Nav.flyTo then
+            text = ns.F("Fly to %s", ns.Nav.flyTo)
+        elseif icon == "fly" then
+            text = ns.L["Take the flight"]
+        else
+            text = icon == "home" and ns.L["Use your Hearthstone"] or ns.L["Crossing"]
+        end
+        SetLabel(self, text)
         return
     end
     self.ship:Hide()

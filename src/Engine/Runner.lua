@@ -186,15 +186,22 @@ function R.Evaluate(routeId)
     local steps = route.s
     local doneAt = {}
     local active = route.id == ns.cdb.route
+    -- Lineare Questreihe (Schlafsack): kein Schritt gilt als "Reihe nie begonnen" und keine Abgabe wird
+    -- zurückgestellt. Sonst bleibt kein offener Schritt übrig und die Kette meldet sich mittendrin fertig
+    -- ("Bonus route finished"), etwa wenn die Quest ein offenes Ziel hat oder das Abgabe-Flag nachhinkt.
+    local chain = route.chain == true
     -- Erst wenn das Questlog geladen ist, darf die Auswertung Zustand schreiben (Zeiger, Zurückgestellt).
     local ready = ns.questsReady ~= false
     ns.cdb.open = ns.cdb.open or {}
     local open = ns.cdb.open[route.id] or {}
 
+    -- Dungeon-Vorbereitung: offene Annahmen gelten nie als übersprungen oder hinter dem Zeiger
+    local prepOpen = route.k == "dungeonquests" and R.PrepOpenSteps(route, player) or {}
+
     local function IsDone(si)
         if doneAt[si] == nil then
             local s = steps[si]
-            if manual[si] or not P.Applies(s, player) then
+            if (manual[si] and not prepOpen[si]) or not P.Applies(s, player) then
                 doneAt[si] = true
             else
                 local done = P.StepDone(s, player, route.id, si)
@@ -279,9 +286,10 @@ function R.Evaluate(routeId)
     -- Fortschrittszeiger: Schritte vor dem Zeiger gelten als erledigt, auch wenn sich der Spielzustand
     -- zurueckdreht (Quest abgebrochen, Items verbraucht). Er läuft nur vorwaerts, ausser per "Zurück".
     local start = active and ns.cdb.pointer[route.id] or 1
+    for si in pairs(prepOpen) do if si < start then start = si end end
     for si = start, #steps do
         local s = steps[si]
-        if not manual[si] and not open[si] and P.Applies(s, player) then
+        if (not manual[si] or prepOpen[si]) and not open[si] and P.Applies(s, player) then
             if Blocking(s) then
                 local pending = (not IsDone(si)) and P.Pending(s, player, route.id, si) or nil
                 local waitsOn = pending and P.WaitsOnQuest(pending)
@@ -296,7 +304,7 @@ function R.Evaluate(routeId)
                 elseif P.OnlyTravel(pending) and (Overtaken(si) or TravelLeadsNowhere(si)) then
                     -- schon am Ziel der Reise oder Reise ohne Quest dahinter, weiter
                     view.lead = {}
-                elseif ready and P.ChainNotStarted(s, player, pending) then
+                elseif ready and not chain and P.ChainNotStarted(s, player, pending) then
                     -- Folgequest einer Reihe, die du nie angefangen hast: gibt es nicht, weiter
                     view.lead = {}
                 elseif waitsOn then
@@ -307,7 +315,7 @@ function R.Evaluate(routeId)
                         view.catchup = { route = src.route, si = src.si, q = waitsOn }
                         view.main = si
                         break
-                    elseif active and ready then
+                    elseif active and ready and not chain then
                         open[si] = waitsOn
                         ns.cdb.open[route.id] = open
                         view.waiting = view.waiting + 1
@@ -343,6 +351,9 @@ function R.Evaluate(routeId)
     -- Fertig erst, wenn auch nichts mehr zurückgestellt ist: sonst wechselt die Route und die
     -- geparkten Abgaben tauchen nie wieder auf.
     view.finished = view.main == nil and #view.sticky == 0 and #view.open == 0
+    -- Dungeon-Vorbereitung endet, sobald alle Quests für den Dungeon im Questlog sind (Dungeon und Abgabe
+    -- gehören nicht mehr dazu)
+    if route.k == "dungeonquests" and ready and R.PrepDone(route, player) then view.finished = true end
     if active and ready and view.main then ns.cdb.pointer[route.id] = view.main end
     return view
 end
@@ -439,6 +450,60 @@ function R.DungeonList(player)
         return a.name < b.name
     end)
     return list
+end
+
+-- Quests, die im Dungeon erledigt werden: eine Quest mit Ziel (complete), deren Annahme in der Route vor
+-- oder bei ihrem ersten Ziel steht. Je Quest die Schritte ihrer Annahme. Einmal je Route berechnet.
+local function PrepQuests(route)
+    if route.prepQuests then return route.prepQuests end
+    local accepts, firstComplete = {}, {}
+    for si, s in ipairs(route.s) do
+        for _, a in ipairs(s.a) do
+            if a.q and a[1] == "accept" then
+                accepts[a.q] = accepts[a.q] or {}
+                accepts[a.q][#accepts[a.q] + 1] = si
+            elseif a.q and a[1] == "complete" and not firstComplete[a.q] then
+                firstComplete[a.q] = si
+            end
+        end
+    end
+    local list = {}
+    for q, si in pairs(firstComplete) do
+        local steps = accepts[q]
+        if steps and steps[1] <= si then list[q] = steps end
+    end
+    route.prepQuests = list
+    return list
+end
+
+-- Alle Quests für den Dungeon gesammelt? Jede ist im Log, schon abgegeben, beim Questgeber nicht im Angebot,
+-- oder ihre Annahme wurde übersprungen bzw. gilt für diesen Charakter nicht.
+function R.PrepDone(route, player)
+    local any = false
+    for q, steps in pairs(PrepQuests(route)) do
+        any = true
+        if not P.Done({ "accept", q = q }) then
+            -- gilt die Annahme für diesen Charakter (Klasse, Rasse)? Übersprungen zählt nicht als gesammelt.
+            for _, si in ipairs(steps) do
+                if P.Applies(route.s[si], player) then return false end
+            end
+        end
+    end
+    return any
+end
+
+-- Schritte mit noch offener Annahme einer Dungeon-Quest: set[si] = true. Die Vorbereitung führt dorthin
+-- zurück, auch wenn der Schritt übersprungen wurde oder der Zeiger schon weiter ist.
+function R.PrepOpenSteps(route, player)
+    local set = {}
+    for q, steps in pairs(PrepQuests(route)) do
+        if not P.Done({ "accept", q = q }) then
+            for _, si in ipairs(steps) do
+                if P.Applies(route.s[si], player) then set[si] = true end
+            end
+        end
+    end
+    return set
 end
 
 -- Quest-Namen einer Vorbereitung (für den Tooltip): { { q = id, text = "Annehmen: X" }, ... }
@@ -550,13 +615,75 @@ function R.MarkFirst(view, tag)
     return false
 end
 
+-- Zu welchem NPC gehört ein Wegpunkt? Die Quelle schreibt ".target X" vor oder nach das ".goto" desselben
+-- Ortes ("Shoni ... goto A ... accept ... goto B, target Wilder"). Regel: der letzte NPC seit dem vorigen
+-- Wegpunkt; gibt es keinen, der erste NPC danach (bis zum nächsten Wegpunkt). actions aus P.Actions.
+function R.GotoNpc(actions, gotoEntry)
+    local before, at
+    for i, entry in ipairs(actions) do
+        local a = entry.a
+        if entry == gotoEntry then
+            at = i
+            break
+        elseif a[1] == "goto" then
+            before = nil
+        elseif a[1] == "target" and a.names and a.names[1] then
+            before = a.names[1]
+        end
+    end
+    if not at then return nil end
+    if before then return before end
+    for i = at + 1, #actions do
+        local a = actions[i].a
+        if a[1] == "goto" then return nil end
+        if a[1] == "target" and a.names and a.names[1] then return a.names[1] end
+    end
+    return nil
+end
+
 -- Naechster Wegpunkt für den Pfeil: erster nicht erreichter goto in Vorlauf, Nachholen, Haupt-Schritt
 -- und abgebbaren zurückgestellten Quests.
+-- Ist die Arbeit an einem Wegpunkt schon getan? Zum Wegpunkt gehören die Handlungen seit dem vorigen
+-- Wegpunkt ("annehmen bei Shoni, dann goto Shoni"); gibt es davor keine, die danach bis zum nächsten
+-- ("goto, dann annehmen"). Reine Wege (nur Wegpunkte hintereinander) haben keine Arbeit und zählen nie
+-- als getan. ctx: { routeId, si } für Ereignis-Marken.
+function R.GotoWorkDone(actions, gotoEntry, ctx)
+    local work, at = {}, nil
+    for i, entry in ipairs(actions) do
+        if entry == gotoEntry then
+            at = i
+            break
+        elseif entry.a[1] == "goto" then
+            work = {}
+        elseif P.BLOCKING[entry.a[1]] then
+            work[#work + 1] = entry
+        end
+    end
+    if not at then return false end
+    if #work == 0 then
+        for i = at + 1, #actions do
+            local entry = actions[i]
+            if entry.a[1] == "goto" then break end
+            if P.BLOCKING[entry.a[1]] then work[#work + 1] = entry end
+        end
+    end
+    if #work == 0 then return false end
+    for _, entry in ipairs(work) do
+        if not P.Done(entry.a, { routeId = ctx.routeId, si = ctx.si, ai = entry.i }) then return false end
+    end
+    return true
+end
+
 function R.Waypoint(view)
     local player = S.Player()
     for _, ref in ipairs(R.Shown(view, false)) do
-        for _, entry in ipairs(P.Actions(ref.route.s[ref.si], player)) do
-            if entry.a[1] == "goto" and not P.Done(entry.a) then return entry.a, ref.si, ref end
+        local actions = P.Actions(ref.route.s[ref.si], player)
+        local ctx = { routeId = ref.route.id, si = ref.si }
+        for _, entry in ipairs(actions) do
+            -- Wegpunkte, an denen nichts mehr zu tun ist, überspringen (Quest dort schon angenommen)
+            if entry.a[1] == "goto" and not P.Done(entry.a) and not R.GotoWorkDone(actions, entry, ctx) then
+                return entry.a, ref.si, ref
+            end
         end
     end
     return nil

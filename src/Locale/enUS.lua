@@ -121,6 +121,7 @@ ns.RegisterLocale("enUS", {
     ["Close"] = "Close",
     ["Right-click: skip step"] = "Right-click: skip step",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "All quests for %s collected. Back to %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "To collect all quests for one dungeon first: the gate button at the bottom of the window.",
     ["Prepare a dungeon"] = "Prepare a dungeon",
     ["Back to %s"] = "Back to %s",
@@ -129,6 +130,8 @@ ns.RegisterLocale("enUS", {
     ["Dungeon quests, step %d of %d"] = "Dungeon quests, step %d of %d",
     ["Grey: done. White: in your quest log."] = "Grey: done. White: in your quest log.",
     ["No dungeon quests for your faction."] = "No dungeon quests for your faction.",
+    ["Loot instantly"] = "Loot instantly",
+    ["With auto loot on, everything is picked up at once."] = "With auto loot on, everything is picked up at once.",
     ["No route"] = "No route",
     ["Not Well Fed. Buff food gives 15 minutes of +5 % kill XP."] = "Not Well Fed. Buff food gives 15 minutes of +5 % kill XP.",
     ["Not Well Fed. Eat buff food before leveling: 15 minutes of +5 % kill XP."] = "Not Well Fed. Eat buff food before leveling: 15 minutes of +5 % kill XP.",

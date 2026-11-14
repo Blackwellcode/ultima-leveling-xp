@@ -52,6 +52,7 @@ ns.RegisterLocale("deDE", {
     ["Close"] = "Schließen",
     ["Right-click: skip step"] = "Rechtsklick: Schritt überspringen",
     -- Dungeon-Vorbereitung
+    ["All quests for %s collected. Back to %s."] = "Alle Quests für %s gesammelt. Weiter mit %s.",
     ["To collect all quests for one dungeon first: the gate button at the bottom of the window."] = "Erst alle Quests für einen Dungeon sammeln: der Tor-Knopf unten im Fenster.",
     ["Prepare a dungeon"] = "Dungeon vorbereiten",
     ["Back to %s"] = "Zurück zu %s",
@@ -60,6 +61,8 @@ ns.RegisterLocale("deDE", {
     ["Dungeon quests, step %d of %d"] = "Dungeon-Quests, Schritt %d von %d",
     ["Grey: done. White: in your quest log."] = "Grau: erledigt. Weiß: in deinem Questlog.",
     ["No dungeon quests for your faction."] = "Keine Dungeon-Quests für deine Fraktion.",
+    ["Loot instantly"] = "Sofort plündern",
+    ["With auto loot on, everything is picked up at once."] = "Bei automatischem Plündern wird alles auf einmal aufgenommen.",
     ["No route"] = "Keine Route",
     ["Step %d of %d"] = "Schritt %d von %d",
     ["%d postponed"] = "%d zurückgestellt",

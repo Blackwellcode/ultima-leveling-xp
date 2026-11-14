@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.4.1 (2026-11-14)
+
+- Sleeping bag quest chain no longer reports itself finished halfway: its steps follow one another and are
+  never skipped or postponed.
+- Quest chains: if a later part of a chain is in your quest log or done, Ultima counts the earlier parts as
+  done too and continues where you are in the chain (for example The Defias Brotherhood).
+- The arrow skips places where nothing is left to do: if you already have the quest from the first quest
+  giver of a step, it leads straight to the next one.
+- Dungeon preparation now ends as soon as every quest for the dungeon is in your quest log, then Ultima goes
+  back to your leveling route. Quests you skipped still count as missing and Ultima leads you to them.
+- Loot instantly: with auto loot on, Ultima picks up everything at once when the loot opens. On by default,
+  switch it off in the options under Automation.
+- Steps with two quest givers in two places (dungeon preparation, e.g. Shoni and Wilder in Stormwind) now
+  name the right person for each waypoint instead of always the first one.
+- Quest automation also works with quest givers that show the old greeting list when the game does not
+  know a quest's name yet: Ultima then uses the name from its route data.
+- Quest automation keeps a short log of its last decisions in the saved data, to find out why it did or
+  did not act at a quest giver.
+- During a flight the arrow shows the flight and its destination, and the map shows no path back to the
+  flight master. Before, the travel planner kept suggesting the flight master the whole flight long.
+
 ## 2.4.0 (2026-11-12)
 
 - Everything by button, no commands needed: the window has eight buttons (back, skip, choose route,
