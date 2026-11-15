@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.2 (2026-11-15)
+
+- The navigation arrow shows the house colours: orange on the way, green when you are close. Its texture
+  still carried the old turquoise, and the colour on top mixed with it since 2.3.0.
+
 ## 2.4.1 (2026-11-14)
 
 - Sleeping bag quest chain no longer reports itself finished halfway: its steps follow one another and are
