@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.5.1 (2026-11-17)
+
+- Wailing Caverns (Alliance): Smart Drinks is only asked for once you have handed in Raptor Horns; Mebok does
+  not offer it before. Without Raptor Horns the dungeon list counts 4 quests and the preparation no longer
+  waits at Mebok.
+
 ## 2.5.0 (2026-11-17)
 
 - New dungeon preparation for Alliance: Wailing Caverns (Trouble at the Docks, Smart Drinks, Deviate Hides,

@@ -636,6 +636,18 @@ end
 -- Dungeons mit Quest-Vorbereitung für diesen Charakter: Forever-eigene Liste (ohne Classic-Doppel),
 -- nur mit mindestens einer Quest, in Reihenfolge der Quelle. Je Eintrag: route, name, range (grobe Stufe
 -- laut Quelle), total (Quests der Vorbereitung), done (abgegeben), active (im Questlog).
+-- Vorquests eines Schritts erfüllt (.isQuestTurnedIn)? Sonst bietet der Questgeber die Quest nicht an.
+local function PrereqMet(s, player)
+    for _, a in ipairs(s.a) do
+        if a[1] == "isQuestTurnedIn" and ns.Cond.Eval(a.c, player) then
+            local any = false
+            for _, q in ipairs(a.ids or {}) do if S.TurnedIn(q) then any = true end end
+            if not any then return false end
+        end
+    end
+    return true
+end
+
 function R.DungeonList(player)
     player = player or S.Player()
     local f = FactionLetter(player.faction)
@@ -644,7 +656,7 @@ function R.DungeonList(player)
         if r.k == "dungeonquests" and not r.era and (r.f == f or r.f == "B") and R.Allowed(r, player) then
             local seen, total, done, active = {}, 0, 0, 0
             for _, s in ipairs(r.s) do
-                if ns.Cond.Eval(s.c, player) then
+                if ns.Cond.Eval(s.c, player) and PrereqMet(s, player) then
                     for _, a in ipairs(s.a) do
                         if a[1] == "accept" and a.q and not seen[a.q] and ns.Cond.Eval(a.c, player) then
                             seen[a.q] = true
@@ -736,7 +748,7 @@ function R.DungeonQuests(route, player)
     player = player or S.Player()
     local list, seen = {}, {}
     for _, s in ipairs(route.s) do
-        if ns.Cond.Eval(s.c, player) then
+        if ns.Cond.Eval(s.c, player) and PrereqMet(s, player) then
             for _, a in ipairs(s.a) do
                 if a[1] == "accept" and a.q and not seen[a.q] and ns.Cond.Eval(a.c, player) then
                     seen[a.q] = true

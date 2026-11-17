@@ -1091,8 +1091,24 @@ do
   check("Dungeons: Deadmines mit 13 Quests, keine erledigt", deadmines and deadmines.total == 13 and deadmines.done == 0,
     deadmines and (deadmines.total .. "/" .. deadmines.done))
   -- Eigene Ergänzung (tools/guides): Wailing Caverns für die Allianz, direkt nach Deadmines, 4 Quests
+  -- Smart Drinks (1491) gibt Mebok erst nach Raptor Horns (865): ohne 865 zählt sie nicht, die Vorbereitung
+  -- führt nicht zu Mebok und wartet nicht auf sie
+  local wcNo
+  for _, e in ipairs(list) do if e.name == "Wailing Caverns" then wcNo = e end end
+  local mebokOpen = false
+  if wcNo then
+    for si in pairs(R.PrepOpenSteps(wcNo.route)) do
+      for _, a in ipairs(wcNo.route.s[si].a) do if a[1] == "accept" and a.q == 1491 then mebokOpen = true end end
+    end
+  end
+  check("Dungeons: Wailing Caverns ohne Raptor Horns: 4 Quests, Smart Drinks nicht gefordert",
+    wcNo and wcNo.total == 4 and not mebokOpen,
+    wcNo and (wcNo.total .. " Quests, Mebok offen: " .. tostring(mebokOpen)) or "fehlt")
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 865 end
+  list = R.DungeonList()
   local wc, wcAt
   for i, e in ipairs(list) do if e.name == "Wailing Caverns" then wc, wcAt = e, i end end
+  C_QuestLog.IsQuestFlaggedCompleted = function() return false end
   check("Dungeons: Allianz-Liste enthält Wailing Caverns nach Deadmines mit 5 Quests",
     wc and wc.total == 5 and names[wcAt - 1] == "The Deadmines" and wc.range == "15-30",
     wc and (wc.total .. " Quests, Platz " .. wcAt .. ", " .. tostring(wc.range)) or "fehlt")
