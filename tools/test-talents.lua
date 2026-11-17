@@ -169,6 +169,13 @@ W.renamed[999001] = nil
 T.Invalidate()
 plan = T.Plan()
 check("Talent nicht im Baum: wird gezählt, nicht verschwiegen", T.Node(plan.tree, 25956) == nil and plan.final[25956] == nil)
+-- mit allen Punkten: das fehlende Talent liegt mit mehreren Rängen im Bereich, gemeldet wird es einmal
+local freeBefore = W.free
+W.free = 51
+T.Invalidate()
+plan = T.Plan()
+check("Fehlendes Talent zählt einmal, nicht je Rang (Audit 2026-11-16)", plan.missing == 1, tostring(plan.missing) .. " gezählt")
+W.free = freeBefore
 W.nodes[25956].spell = 25956
 W.free = 1
 T.Invalidate()
@@ -193,6 +200,10 @@ T.Select(nil)
 check("Wahl zurück auf automatisch", ns.cdb.talentBuild == nil and T.Choose() == prot)
 T.Select(99)
 check("Ungültige Wahl wird verworfen", ns.cdb.talentBuild == nil)
+-- gespeicherte Nummer, die es nach einem Datenupdate nicht mehr gibt (Audit 2026-11-16)
+ns.cdb.talentBuild = 99
+T.Choose()
+check("Gespeicherte ungültige Wahl wird auf automatisch zurückgesetzt", ns.cdb.talentBuild == nil, tostring(ns.cdb.talentBuild))
 
 -------------------------------------------------------------------------------
 -- 6. Builds mit Vorphase und Neuverteilung (Schamane Spellhance, Magier Frost)
@@ -229,6 +240,54 @@ W.class = "DEATHKNIGHT"
 T.Invalidate()
 none, err = T.Plan()
 check("Klasse ohne Builds: kein Plan, Grund genannt", none == nil and err == "no build for this class")
+
+-- Audit 2026-11-17: automatische Wahl bei Builds mit Vorphase. Auf der Stufe der Neuverteilung bleibt der
+-- Build, und der Hinweis "neu verteilen" erscheint (vorher sprang die Wahl zu einem anderen Build, ohne Hinweis).
+do
+    local _, preIndex
+    for i, b in ipairs(ns.TalentBuilds.SHAMAN) do if b.pre then _, preIndex = b, i break end end
+    local b = ns.TalentBuilds.SHAMAN[preIndex]
+    MakeTree("SHAMAN")
+    W.level = b.preUntil - 1
+    local preCount = 0
+    for _ in b.pre:gmatch("%d+:%d+") do preCount = preCount + 1 end
+    Spend(b.pre, math.min(preCount, W.level - 9))
+    W.free = 0
+    local before = select(2, T.Choose())
+    W.level = b.preUntil
+    W.free = 1
+    T.Invalidate()
+    local plan = T.Plan()
+    check("Vorphase: automatische Wahl bleibt beim Build und meldet Neuverteilung",
+        before == preIndex and plan and plan.index == preIndex and plan.respec == true,
+        ("vorher %s, nachher %s, respec %s"):format(tostring(before), tostring(plan and plan.index), tostring(plan and plan.respec)))
+    W.free = 0
+end
+
+-- Audit 2026-11-17: Build ab Punkt 6 ohne Vorphase (Paladin Heilig): die ersten 5 Punkte sind frei und gelten
+-- nicht als falsch (vorher rote Labels und keine Erinnerung auf Stufe 10-14)
+do
+    local holy, holyIndex = Find("PALADIN", "holy")
+    MakeTree("PALADIN")
+    T.Select(holyIndex)
+    W.level, W.free = 14, 0
+    local spent = 0
+    for _, id in ipairs(W.order) do
+        local want = false
+        for sid in holy.order:gmatch("(%d+):%d+") do if tonumber(sid) == id then want = true end end
+        if not want and spent < 5 then W.nodes[id].ranks = 1; spent = spent + 1 end
+    end
+    T.Invalidate()
+    local plan = T.Plan()
+    check("Heilig ab Punkt 6: 5 freie Punkte davor gelten nicht als falsch", spent == 5 and plan and #plan.wrong == 0,
+        ("verteilt %d, falsch %s"):format(spent, tostring(plan and #plan.wrong)))
+    T.Select(nil)
+end
+
+-- Audit 2026-11-17: ohne Punkte kein Bonus (vorher Stufe 1 -> 5 Punkte "früher", Karte zeigte "Stufe 5")
+check("Bonus: Stufe 1 ohne Punkte 0, Stufe 5 mit 1 Punkt (Perk) 5, Stufe 20 mit 11 Punkten 0",
+    T.Bonus(0, 1) == 0 and T.Bonus(1, 5) == 5 and T.Bonus(11, 20) == 0,
+    T.Bonus(0, 1) .. "/" .. T.Bonus(1, 5) .. "/" .. T.Bonus(11, 20))
 
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)

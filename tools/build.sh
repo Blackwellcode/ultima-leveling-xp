@@ -14,7 +14,7 @@ cd "$ROOT"
 DIST="$ROOT/dist"
 ADDONS_WIN="${ULTIMA_ADDONS:-E:\\World of Warcraft\\_forever_\\Interface\\AddOns}"
 NAME=UltimaLevelingXP
-VERSION=2.4.2
+VERSION=2.5.0
 DEPLOY=0; PACKAGE=0
 for a in "$@"; do
     case "$a" in
@@ -32,6 +32,8 @@ grep -E '^Routen:' dist.convert.log
 rm -f dist.convert.log
 lua tools/verify-db.lua > /dev/null || { lua tools/verify-db.lua | grep FEHLER; fail "Datenbank-Pruefung"; }
 echo "Datenbank ok"
+# Eigene Guides (tools/guides): jede Quest muss es fuer die Fraktion des Guides geben (QuestieDB)
+lua tools/check-guides-faction.lua || fail "Fraktionspruefung eigene Guides"
 
 # 2. Syntax und Tests
 for f in $(find src -name '*.lua'); do luac -p "$f" || fail "Syntaxfehler in $f"; done

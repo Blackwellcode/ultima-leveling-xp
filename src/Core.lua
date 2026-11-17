@@ -43,10 +43,15 @@ local DEFAULTS = {
         manual = {},           -- [routeId] = { [stepIndex] = true } von Hand abgehakt
         pointer = {},          -- [routeId] = Index des aktuellen Haupt-Schritts (läuft nur vorwaerts)
         marks = {},            -- [routeId] = { [stepIndex .. ":" .. actionIndex] = true } Ereignis-Marken
+        ver = {},              -- [routeId] = Fingerabdruck der Route, zu dem die Schrittnummern gehören
+        comp = {},             -- [routeId] = { stepIndex, ... } Begleiter vor dem Zeiger (Vorlauf, Dauer, "mit")
         open = {},             -- [routeId] = { [stepIndex] = questId } zurückgestellte Abgaben
+        carry = {},            -- { { r = routeId, si, q } }: zurückgestellte Abgaben früherer Routen
+        back = {},             -- [routeId] = stepIndex: per "Zurück" gewählter Haupt-Schritt (bis Überspringen)
         unavail = {},          -- [questId] = true: beim Questgeber nicht im Angebot (bis zum nächsten Level)
         taxi = {},             -- [Name] = true: bekannte Flugpunkte (Name in Client-Sprache, Rückfall)
         taxiIds = {},          -- [Knoten-ID] = true: bekannte Flugpunkte, sprachunabhängig
+        taxiNames = {},        -- [Knoten-ID] = Name in Client-Sprache (beim Flugmeister gesehen)
         professions = { firstaid = true, cooking = true, fishing = true }, -- Berufe entlang der Route (false = überspringen)
         -- welcomed (Willkommensfenster gesehen) entsteht beim Schließen des Fensters
     },

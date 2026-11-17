@@ -164,13 +164,25 @@ local function CheckDungeon()
     local _, kind = IsInInstance()
     if kind ~= "party" then return nil end
     local name = GetInstanceInfo()
+    -- Dungeon-Quests stehen oft unter der Zone (Westfall), nicht unter dem Dungeon: zusätzlich die Quests der
+    -- Dungeon-Vorbereitung mit diesem Namen zählen
+    local prep = {}
+    for _, entry in ipairs(ns.Runner and ns.Runner.DungeonList and ns.Runner.DungeonList() or {}) do
+        if entry.name == name then
+            for _, step in ipairs(entry.route.s) do
+                for _, a in ipairs(step.a) do
+                    if a[1] == "accept" and a.q then prep[a.q] = true end
+                end
+            end
+        end
+    end
     local header, quests = nil, 0
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
         local info = C_QuestLog.GetInfo(i)
         if info then
             if info.isHeader then
                 header = info.title
-            elseif header == name then
+            elseif header == name or (info.questID and prep[info.questID]) then
                 quests = quests + 1
             end
         end
@@ -268,15 +280,28 @@ local function TooltipLines(bag, slot)
     return lines
 end
 
+-- Ganzes Wort: "satt" soll nicht in "Sattel" treffen
+local function HasWord(text, word)
+    local pattern = "%f[%w]" .. word:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0") .. "%f[%W]"
+    return text:find(pattern) ~= nil
+end
+
+local CONSUMABLE = 0 -- Itemklasse Verbrauchsgüter; Rezepte (Klasse 9) nennen im Tooltip das Satt des Gerichts
 local function GivesWellFed(bag, slot, id)
     if isFood[id] ~= nil then return isFood[id] end
+    local info = C_Item and C_Item.GetItemInfoInstant
+    local classID = info and select(6, info(id))
+    if classID ~= nil and not ns.IsSecret(classID) and classID ~= CONSUMABLE then
+        isFood[id] = false
+        return false
+    end
     local lines = TooltipLines(bag, slot)
     if not lines then return false end -- noch nicht geladen: nicht merken, beim nächsten Durchlauf erneut prüfen
     local word = FoodWord()
     local found = false
     for _, text in ipairs(lines) do
         text = text:lower()
-        if (word and text:find(word, 1, true)) or text:find("well fed", 1, true) then
+        if (word and HasWord(text, word)) or HasWord(text, "well fed") then
             found = true
             break
         end

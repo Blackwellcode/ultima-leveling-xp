@@ -155,9 +155,22 @@ check("Bedingung Klammern '!(Hunter/Warrior) Human'", C("!(Hunter/Warrior) Human
 check("Bedingung Spiel 'FOREVER'", C("FOREVER") and not C("TBC"))
 
 -- Routenwahl
+-- Seit 2026-11-17 führt "11-13 Loch Modan" (Menschen-Weg) laut Quelle in "13-15 Westfall" (vorher ging diese
+-- #next-Zeile verloren). Unfertig gilt dort "Vorgänger zuerst" wie bei Darkshore unten; die Westfall-Prüfung
+-- setzt daher einen gespielten Loch-Modan-Abschnitt voraus.
 ns.cdb.route = nil
+local lochFirst = R.FindRoute(S.Player())
+check("Routenwahl Level 13 Mensch, Loch Modan unfertig: Vorgänger 11-13 Loch Modan zuerst",
+    lochFirst and lochFirst.n == "11-13 Loch Modan", lochFirst and lochFirst.n)
+local function PlayedLochModan()
+    for _, s in ipairs(R.Get("A:route:11-13 Loch Modan").s) do
+        for _, a in ipairs(s.a) do if a.q then W.turned[a.q] = true end end
+    end
+end
+PlayedLochModan()
 local best = R.FindRoute(S.Player())
 check("Routenwahl Level 13 Mensch Paladin: 13-15 Westfall", best and best.n == "13-15 Westfall", best and best.n)
+for q in pairs(W.turned) do W.turned[q] = nil end
 
 -- Durchlauf Westfall. Spielwelt wie nach den Vorgaenger-Routen: Quests, die Westfall abgibt, aber nicht
 -- selbst annimmt, stehen fertig im Log (sonst entfallen ihre Abgaben zu Recht).
@@ -207,8 +220,14 @@ W.onLog[4762], W.onLog[4740] = true, true
 R.Load(DS)
 v = R.Evaluate()
 check("Darkshore: Haupt-Schritt bleibt die Abgabe (Schritt 4)", v.main == 4, "Schritt " .. tostring(v.main))
+-- Schritt mit dem Ziel von Quest 4762 in 14-16 Darkshore (vor 2026-11-17 Nummer 185; seit #include stehen
+-- eingebundene Schritte davor, die Nummer ergibt sich deshalb aus den Daten)
+local goalStep
+for si, s in ipairs(R.Get("A:route:14-16 Darkshore").s) do
+    for _, a in ipairs(s.a) do if a[1] == "complete" and a.q == 4762 and not goalStep then goalStep = si end end
+end
 check("Darkshore: Ziel wird aus 14-16 Darkshore nachgeholt",
-    v.catchup and v.catchup.route.id == "A:route:14-16 Darkshore" and v.catchup.si == 185,
+    v.catchup and v.catchup.route.id == "A:route:14-16 Darkshore" and v.catchup.si == goalStep,
     v.catchup and (v.catchup.route.id .. " #" .. v.catchup.si) or "kein Nachholen")
 local wp = R.Waypoint(v)
 check("Darkshore: Pfeil zeigt zum Fluss (Nachhol-Ziel), nicht zum Questgeber",
@@ -362,6 +381,7 @@ end
 pick = R.FindRoute(S.Player())
 check("Routenwahl Level 16 mit erledigtem Vorgaenger: 16-19 Darkshore", pick and pick.n == "16-19 Darkshore", pick and pick.n)
 ResetWorld(13)
+PlayedLochModan()
 pick = R.FindRoute(S.Player())
 check("Routenwahl Level 13 bleibt 13-15 Westfall", pick and pick.n == "13-15 Westfall", pick and pick.n)
 -- Verschachtelte Klammern in Bedingungen
@@ -458,6 +478,473 @@ check("Schlafsack: ab Schritt 3 bis zur letzten Abgabe durchgespielt",
     bagErr == nil and bagView and bagView.finished and W.turned[79976] == true,
     bagErr or ("79976 abgegeben: " .. tostring(W.turned[79976])))
 ns.cdb.route, ns.cdb.returnRoute = nil, nil
+
+-------------------------------------------------------------------------------
+-- Audit 2026-11-16: synthetische Routen für Randfälle der Auswertung
+-------------------------------------------------------------------------------
+local function AddRoute(r)
+    r.f, r.lo, r.hi = r.f or "A", r.lo or 1, r.hi or 60
+    ns.routes[#ns.routes + 1] = r
+    R.Reindex()
+    return r
+end
+
+-- a) Reisekette in der Dungeon-Vorbereitung: Flug, dann Laufweg, dann Quest. Der Flug entfällt nicht,
+--    nur weil danach noch eine Reise kommt (Audit: "Flug nach Wetlands" wurde übersprungen).
+ResetWorld(22)
+W.zone = "Westfall"
+AddRoute({ id = "T:dungeonquests:kette", k = "dungeonquests", n = "Kette", s = {
+    { a = { { "fly", to = "Wetlands" } } },
+    { a = { { "zone", to = "Hillsbrad Foothills" } } },
+    { a = { { "accept", q = 900201 }, { "target", names = { "NpcA" } } } },
+    { a = { { "complete", q = 900201 } } },
+} })
+ns.cdb.route = "T:dungeonquests:kette"
+local tv = R.Evaluate()
+check("Vorbereitung: Flug vor einem Laufweg bleibt Haupt-Schritt", tv.main == 1, "Schritt " .. tostring(tv.main))
+
+-- b) Reise in eine Gegend, deren Quests du schon hast, entfällt weiter, wenn danach ein Flug folgt
+ResetWorld(22)
+W.onLog[900202] = true
+AddRoute({ id = "T:dungeonquests:leer", k = "dungeonquests", n = "Leer", s = {
+    { a = { { "fly", to = "Wetlands" } } },
+    { a = { { "accept", q = 900202 }, { "target", names = { "NpcA" } } } },
+    { a = { { "fly", to = "Southshore" } } },
+    { a = { { "accept", q = 900203 }, { "target", names = { "NpcB" } } } },
+    { a = { { "complete", q = 900202 } } },
+    { a = { { "complete", q = 900203 } } },
+} })
+ns.cdb.route = "T:dungeonquests:leer"
+tv = R.Evaluate()
+check("Vorbereitung: Flug ins Leere entfällt, Flug zur offenen Quest bleibt", tv.main == 3, "Schritt " .. tostring(tv.main))
+
+-- c) "Nicht angeboten" gilt nur für Quests des angesprochenen NPCs (Audit: Gespräch mit A strich die Quests von B)
+do
+    local step = { a = { { "accept", q = 900101 }, { "target", names = { "NpcA" } }, { "goto", m = 1, x = 1, y = 1 },
+        { "accept", q = 900102 }, { "target", names = { "NpcB" } }, { "goto", m = 1, x = 2, y = 2 } } }
+    local actions = P.Actions(step, S.Player())
+    local all = function() return true end
+    local miss = R.NotOffered and R.NotOffered(actions, all, function(n) return n == "NpcA" end, {}) or {}
+    check("Nicht angeboten: nur die Quest von NpcA", #miss == 1 and miss[1] == 900101, table.concat(miss, ","))
+    miss = R.NotOffered and R.NotOffered(actions, all, function(n) return n == "NpcC" end, {}) or { 0 }
+    check("Nicht angeboten: fremder NPC folgert nichts", #miss == 0, table.concat(miss, ","))
+    local mixed = { a = { { "accept", q = 900103 }, { "target", names = { "NpcA" } }, { "target", names = { "NpcB" } } } }
+    miss = R.NotOffered and R.NotOffered(P.Actions(mixed, S.Player()), all, function(n) return n == "NpcA" end, {}) or { 0 }
+    check("Nicht angeboten: zwei NPCs im selben Abschnitt -> kein Schluss", #miss == 0, table.concat(miss, ","))
+    local withTurnin = { a = { { "turnin", q = 900104 }, { "accept", q = 900105 }, { "target", names = { "NpcA" } } } }
+    miss = R.NotOffered and R.NotOffered(P.Actions(withTurnin, S.Player()), all, function(n) return n == "NpcA" end, {}) or { 0 }
+    check("Nicht angeboten: offene Abgabe beim selben NPC -> kein Schluss", #miss == 0, table.concat(miss, ","))
+end
+
+-- d) "Zurück" zeigt den vorigen Schritt, auch wenn er erledigt ist, bis du weiterklickst
+ResetWorld(22)
+AddRoute({ id = "T:route:zurueck", k = "route", n = "Zurueck", s = {
+    { a = { { "accept", q = 900301 } } },
+    { a = { { "accept", q = 900302 } } },
+    { a = { { "accept", q = 900303 } } },
+} })
+ns.cdb.route = "T:route:zurueck"
+W.onLog[900301], W.onLog[900302] = true, true
+tv = R.Evaluate()
+local backTo = R.Back(tv)
+local tv2 = R.Evaluate()
+check("Zurück: voriger (erledigter) Schritt bleibt Haupt-Schritt", tv.main == 3 and backTo == 2 and tv2.main == 2,
+    ("vorher %s, zurück %s, danach %s"):format(tostring(tv.main), tostring(backTo), tostring(tv2.main)))
+R.Skip(tv2.main)
+tv2 = R.Evaluate()
+check("Zurück: Überspringen geht wieder vorwärts", tv2.main == 3, "Schritt " .. tostring(tv2.main))
+
+-- e) Optionale Abgabe (negative ID in der Quelle): wird abgegeben, wenn fertig, hält sonst nicht an
+check("Optionale Abgabe: Konverter liefert positive IDs",
+    (function()
+        for _, r in ipairs(ns.routes) do for _, st in ipairs(r.s) do for _, a in ipairs(st.a) do
+            if a[1] == "turnin" and a.q and a.q < 0 then return false end
+        end end end
+        return true
+    end)())
+ResetWorld(22)
+local optTurnin = { "turnin", q = 900401, opt = true }
+W.onLog[900401] = true
+HAS_OBJECTIVES[900401] = true
+check("Optionale Abgabe: Quest mit offenem Ziel blockiert nicht", P.Done(optTurnin) == true)
+W.all[900401] = true
+check("Optionale Abgabe: fertige Quest wird abgegeben", P.Done(optTurnin) == false)
+ns.cdb.route = nil
+
+-- f) Überspringen in der Dungeon-Vorbereitung wirkt sofort; die Quest wird am Ende trotzdem noch geholt
+ResetWorld(22)
+AddRoute({ id = "T:dungeonquests:skip", k = "dungeonquests", n = "Skip", s = {
+    { a = { { "accept", q = 900501 }, { "target", names = { "NpcA" } } } },
+    { a = { { "accept", q = 900502 }, { "target", names = { "NpcB" } } } },
+    { a = { { "complete", q = 900501 } } },
+    { a = { { "complete", q = 900502 } } },
+} })
+ns.cdb.route = "T:dungeonquests:skip"
+tv = R.Evaluate()
+R.Skip(tv.main)
+tv2 = R.Evaluate()
+check("Vorbereitung: Überspringen geht zur nächsten offenen Quest", tv.main == 1 and tv2.main == 2,
+    ("vorher %s, danach %s"):format(tostring(tv.main), tostring(tv2.main)))
+W.onLog[900502] = true
+tv2 = R.Evaluate()
+check("Vorbereitung: danach zurück zur übersprungenen Quest", tv2.main == 1 and not tv2.finished,
+    "Schritt " .. tostring(tv2.main))
+ns.cdb.route = nil
+
+-- g) Zurückgestellte Abgabe beim Routenwechsel in die Folgeroute mitnehmen (Entscheidung 2026-11-16)
+ResetWorld(22)
+ns.cdb.carry = {}
+AddRoute({ id = "T:route:alt", k = "route", n = "Alt", s = {
+    { a = { { "accept", q = 900601 } } },
+    { a = { { "turnin", q = 900601 } } },
+} })
+AddRoute({ id = "T:route:neu", k = "route", n = "Neu", s = {
+    { a = { { "accept", q = 900602 } } },
+} })
+HAS_OBJECTIVES[900601] = true
+W.onLog[900601] = true
+ns.cdb.route = "T:route:alt"
+tv = R.Evaluate()
+check("Mitnahme: Abgabe mit offenem Ziel zurückgestellt, Route fertig", tv.finished == true and tv.waiting == 1,
+    "fertig " .. tostring(tv.finished) .. ", wartend " .. tv.waiting)
+R.Load("T:route:neu")
+tv = R.Evaluate()
+check("Mitnahme: Folgeroute zählt die Abgabe als wartend", tv.waiting == 1 and #tv.carried == 0,
+    "wartend " .. tv.waiting .. ", mitgenommen " .. #(tv.carried or {}))
+W.all[900601] = true
+tv = R.Evaluate()
+local shownCarry = false
+for _, ref in ipairs(R.Shown(tv)) do
+    if ref.route.id == "T:route:alt" and ref.si == 2 and ref.kind == "open" then shownCarry = true end
+end
+check("Mitnahme: Quest fertig -> Abgabe erscheint in der Folgeroute", shownCarry and tv.main == 1,
+    "angezeigt " .. tostring(shownCarry) .. ", Schritt " .. tostring(tv.main))
+W.onLog[900601], W.turned[900601] = nil, true
+tv = R.Evaluate()
+check("Mitnahme: abgegeben -> aus der Liste", #tv.carried == 0 and #(ns.cdb.carry or {}) == 0 and tv.waiting == 0,
+    "Liste " .. #(ns.cdb.carry or {}))
+ns.cdb.route, ns.cdb.carry = nil, {}
+
+-- h) Wegkette (Screenshot 2026-11-17, "Reise nach Ratchet"): ein erreichter Zwischenpunkt bleibt erreicht.
+--    Vorher galt er wieder als offen, sobald du seinen Radius verlassen hast, und der Pfeil schickte dich
+--    zurück ("Laufe zu Ashenvale", vor und zurück).
+ResetWorld(22)
+do
+    local g1 = { "goto", m = 1440, x = 1, y = 1, w = true, ci = 1, r = 50 }
+    local g2 = { "goto", m = 1413, x = 2, y = 2, w = true, ci = 1, r = 35 }
+    local g3 = { "goto", m = 1413, x = 3, y = 3, w = true, ci = 1 }
+    AddRoute({ id = "T:route:wegkette", k = "route", n = "Wegkette", s = {
+        { a = { g1, g2, g3, { "subzone", area = 392 } } },
+    } })
+    ns.cdb.route = "T:route:wegkette"
+    local function Wp() return (R.Waypoint(R.Evaluate())) end
+    local start = Wp()
+    W.pos = g1
+    local atFirst = Wp()
+    W.pos = nil -- unterwegs zwischen erstem und zweitem Punkt
+    local between = Wp()
+    check("Wegkette: erst Punkt 1, dort Punkt 2", start == g1 and atFirst == g2)
+    check("Wegkette: nach Punkt 1 unterwegs weiter Punkt 2, nicht zurück", between == g2,
+        between == g1 and "zurück zu Punkt 1" or tostring(between and between.x))
+    W.pos = g3
+    local atEnd = Wp()
+    W.pos = nil
+    check("Wegkette: Endpunkt verlassen -> Pfeil wieder zum Endpunkt", atEnd == nil and Wp() == g3)
+    ns.cdb.route = nil
+end
+
+-- j) Audit 2026-11-17: Mitgenommene Abgabe kommt bei der Rückkehr in ihre Route zurück (vorher verwarf die
+--    Route sie, weil sie die Abgabe selbst enthält, ihr Zeiger aber schon dahinter stand: Abgabe weg)
+ResetWorld(22)
+ns.cdb.carry = {}
+AddRoute({ id = "T:route:hin", k = "route", n = "Hin", s = {
+    { a = { { "accept", q = 900701 } } },
+    { a = { { "turnin", q = 900701 } } },
+    { a = { { "accept", q = 900702 } } },
+} })
+HAS_OBJECTIVES[900701] = true
+W.onLog[900701] = true
+R.Load("T:route:hin")
+tv = R.Evaluate()
+R.Load("T:route:neu")
+R.Load("T:route:hin")
+tv = R.Evaluate()
+check("Mitnahme: zurück in der eigenen Route wartet die Abgabe weiter", tv.waiting == 1,
+    "wartend " .. tv.waiting .. ", Schritt " .. tostring(tv.main))
+W.all[900701] = true
+tv = R.Evaluate()
+local backShown = false
+for _, ref in ipairs(R.Shown(tv)) do if ref.route.id == "T:route:hin" and ref.si == 2 then backShown = true end end
+check("Mitnahme: Quest fertig -> Abgabe wieder sichtbar", backShown, "Schritt " .. tostring(tv.main))
+ns.cdb.route, ns.cdb.carry = nil, {}
+
+-- k) Audit 2026-11-17: Zurückgestellte Abgabe einer abgebrochenen Quest blockiert die Route nicht (vorher
+--    blieb die Folge-Annahme im selben Schritt offen, und die Route wurde nie fertig)
+ResetWorld(22)
+AddRoute({ id = "T:route:abbruch", k = "route", n = "Abbruch", s = {
+    { a = { { "accept", q = 900801 } } },
+    { a = { { "turnin", q = 900801 }, { "accept", q = 900802 } } },
+} })
+HAS_OBJECTIVES[900801] = true
+W.onLog[900801] = true
+R.Load("T:route:abbruch")
+tv = R.Evaluate()
+local parked = tv.waiting
+W.onLog[900801] = nil -- abgebrochen
+tv = R.Evaluate()
+check("Zurückgestellt: abgebrochene Quest gibt die Route frei (neu annehmen statt toter Folge-Annahme)",
+    parked == 1 and #tv.open == 0 and tv.main == 1,
+    "geparkt " .. parked .. ", Schritt " .. tostring(tv.main) .. ", offen " .. #tv.open)
+ns.cdb.route = nil
+
+-- l) Audit 2026-11-17: Kopfbedingung der Quelle gilt ("<< Alliance Hunter"). Vorher bekam der Paladin die
+--    Jäger-Route 21-23 Ashenvale/Stonetalon angeboten.
+ResetWorld(21)
+do
+    local hunterRoute, other = false, false
+    for _, r in ipairs(R.Candidates(S.Player(), "route")) do
+        if r.id == "A:route:21-23 Ashenvale/Stonetalon" then hunterRoute = true end
+        if r.id == "A:route:21-23 Stonetalon/Ashenvale" then other = true end
+    end
+    check("Routenwahl: Paladin bekommt keine Jäger-Route, aber die allgemeine", not hunterRoute and other,
+        "Jäger-Route " .. tostring(hunterRoute) .. ", allgemeine " .. tostring(other))
+end
+
+-- m) Audit 2026-11-17: Neustart einer Route vergisst Ereignis-Marken (vorher galt ein früherer Flug sofort
+--    als erledigt)
+ResetWorld(22)
+AddRoute({ id = "T:dungeonquests:neustart", k = "dungeonquests", n = "Neustart", s = {
+    { a = { { "fly", to = "Wetlands" } } },
+    { a = { { "accept", q = 900901 } } },
+} })
+P.SetMark("T:dungeonquests:neustart", 1, 1)
+R.Restart("T:dungeonquests:neustart")
+tv = R.Evaluate()
+check("Neustart: Flug-Schritt wieder offen", tv.main == 1, "Schritt " .. tostring(tv.main))
+ns.cdb.route = nil
+
+-- n) Audit 2026-11-17: Datenupdate ändert die Schrittfolge -> gespeicherte Schrittnummern dieser Route gelten
+--    nicht mehr (vorher zeigte der alte Zeiger auf falsche Schritte)
+ResetWorld(22)
+do
+    local r = AddRoute({ id = "T:route:fassung", k = "route", n = "Fassung", v = 111, s = {
+        { a = { { "accept", q = 901001 } } }, { a = { { "accept", q = 901002 } } },
+    } })
+    ns.cdb.ver = {}
+    R.CheckVersions()
+    ns.cdb.pointer["T:route:fassung"], ns.cdb.manual["T:route:fassung"] = 2, { [1] = true }
+    local same = R.CheckVersions()
+    local kept = ns.cdb.pointer["T:route:fassung"] == 2
+    r.v = 222
+    local reset = R.CheckVersions()
+    check("Fassung: gleiche Daten behalten den Stand, geänderte verwerfen ihn", same == 0 and kept and reset == 1
+        and ns.cdb.pointer["T:route:fassung"] == nil and ns.cdb.manual["T:route:fassung"] == nil,
+        ("gleich %d, behalten %s, verworfen %d"):format(same, tostring(kept), reset))
+end
+
+-- o) Regression 2026-11-17: Rundweg (erster und letzter Punkt gleich). Am Startpunkt führt der Pfeil zu
+--    Punkt 2, nicht ins Leere (das Gedächtnis sprang auf den letzten, gleichen Punkt und übersprang alles)
+ResetWorld(22)
+do
+    local g1 = { "goto", m = 1440, x = 1, y = 1, w = true, ci = 1, r = 30 }
+    local g2 = { "goto", m = 1440, x = 2, y = 2, w = true, ci = 1, r = 30 }
+    local g3 = { "goto", m = 1440, x = 3, y = 3, w = true, ci = 1, r = 30 }
+    AddRoute({ id = "T:route:rundweg", k = "route", n = "Rundweg", s = {
+        { a = { g1, g2, g3, g1, { "complete", q = 901101, o = 1 } } },
+    } })
+    W.onLog[901101] = true
+    HAS_OBJECTIVES[901101] = true
+    ns.cdb.route = "T:route:rundweg"
+    W.pos = g1
+    local atStart = R.Waypoint(R.Evaluate())
+    W.pos = nil
+    local leaving = R.Waypoint(R.Evaluate())
+    W.pos = g2
+    local atTwo = R.Waypoint(R.Evaluate())
+    check("Rundweg: am Start zu Punkt 2, unterwegs weiter 2, dort zu Punkt 3", atStart == g2 and leaving == g2 and atTwo == g3,
+        ("Start %s, unterwegs %s, an 2 %s"):format(atStart and atStart.x or "nil", leaving and leaving.x or "nil",
+            atTwo and atTwo.x or "nil"))
+    ns.cdb.route = nil
+end
+
+-- p) Regression 2026-11-17: Vorlauf zu einem übersprungenen Schritt verschwindet; der Pfeil führt zum
+--    nächsten Schritt (vorher blieb der Zeiger auf dem Vorlauf und der Pfeil zeigte weiter dorthin)
+ResetWorld(22)
+do
+    local gx = { "goto", m = 1440, x = 10, y = 10, w = true, ci = 1 }
+    local gx2 = { "goto", m = 1440, x = 10, y = 10, w = true, ci = 1 }
+    local gy = { "goto", m = 1440, x = 20, y = 20, w = true, ci = 1 }
+    AddRoute({ id = "T:route:vorlauf", k = "route", n = "Vorlauf", s = {
+        { a = { gx } },
+        { a = { { "accept", q = 901201 }, gx2 } },
+        { a = { { "accept", q = 901202 }, gy } },
+    } })
+    ns.cdb.route = "T:route:vorlauf"
+    local v1 = R.Evaluate()
+    R.Skip(2)
+    R.Evaluate()
+    local v2 = R.Evaluate()
+    check("Vorlauf: nach Überspringen des Ziels zeigt der Pfeil zum nächsten Schritt",
+        v1.main == 2 and v2.main == 3 and #v2.lead == 0 and R.Waypoint(v2) == gy,
+        ("vorher %s, nachher %s, Vorlauf %d"):format(tostring(v1.main), tostring(v2.main), #v2.lead))
+    ns.cdb.route = nil
+end
+
+-- q) Regression 2026-11-17: Ein offener Dauer-Schritt hebt den Zeigerschutz nicht auf. Quest abgebrochen ->
+--    der Haupt-Schritt springt nicht zurück (vorher stand der Zeiger auf dem Dauer-Schritt)
+ResetWorld(22)
+do
+    W.onLog[901300] = true
+    HAS_OBJECTIVES[901300] = true
+    AddRoute({ id = "T:route:schutz", k = "route", n = "Schutz", s = {
+        { st = true, a = { { "complete", q = 901300, o = 1 } } },
+        { a = { { "accept", q = 901301 } } },
+        { a = { { "accept", q = 901302 } } },
+        { a = { { "accept", q = 901303 } } },
+    } })
+    ns.cdb.route = "T:route:schutz"
+    W.onLog[901301], W.onLog[901302] = true, true
+    local before = R.Evaluate()
+    R.Evaluate()
+    W.onLog[901301] = nil -- abgebrochen
+    local after = R.Evaluate()
+    check("Zeigerschutz: Dauer-Schritt offen, abgebrochene Quest -> Haupt-Schritt bleibt", before.main == 4
+        and after.main == 4 and #after.sticky == 1,
+        ("vorher %s, nachher %s, Dauer %d"):format(tostring(before.main), tostring(after.main), #after.sticky))
+    ns.cdb.route = nil
+end
+
+-- r) Regression 2026-11-17: Wer schon auf der Route einer anderen Klasse steht (vor der Kopfbedingung
+--    möglich), bekommt beim nächsten Abgleich eine passende Route (vorher blieb er bis Stufe hi+1 darauf)
+ResetWorld(22)
+ns.cdb.route = "A:route:21-23 Ashenvale/Stonetalon" -- Jäger-Route, Spieler ist Paladin
+local switched = R.AutoSelect(false)
+check("Routenwahl: Jäger-Route eines Paladins wird ersetzt", switched ~= nil
+    and switched ~= "A:route:21-23 Ashenvale/Stonetalon" and R.Allowed(R.Get(switched), S.Player()), tostring(switched))
+ns.cdb.route = nil
+
+-- s) Regression 2026-11-17: Mitgenommene Abgabe, die auch die neue Route enthält, deren Zeiger aber schon
+--    dahinter steht: erscheint weiter (vorher wurde sie gelöscht und tauchte nirgends mehr auf)
+ResetWorld(22)
+ns.cdb.carry = {}
+do
+    AddRoute({ id = "T:route:mitA", k = "route", n = "MitA", s = {
+        { a = { { "accept", q = 901401 } } }, { a = { { "turnin", q = 901401 } } },
+    } })
+    AddRoute({ id = "T:route:mitB", k = "route", n = "MitB", s = {
+        { a = { { "turnin", q = 901401 } } }, { a = { { "accept", q = 901402 } } },
+    } })
+    HAS_OBJECTIVES[901401] = true
+    W.onLog[901401] = true
+    R.Load("T:route:mitA")
+    R.Evaluate()
+    ns.cdb.pointer["T:route:mitB"] = 2
+    R.Load("T:route:mitB")
+    local waitingInB = R.Evaluate().waiting
+    W.all[901401] = true
+    local v = R.Evaluate()
+    local shown = false
+    for _, ref in ipairs(R.Shown(v)) do if ref.route.id == "T:route:mitA" and ref.si == 2 then shown = true end end
+    check("Mitnahme: neue Route hat die Abgabe schon hinter sich -> Abgabe erscheint trotzdem",
+        waitingInB == 1 and shown, ("wartend %d, angezeigt %s"):format(waitingInB, tostring(shown)))
+    ns.cdb.route, ns.cdb.carry = nil, {}
+end
+
+-- t) Simulation 2026-11-17: Schritt mit Annahme und Abgabe derselben Quest (annehmen, sofort abgeben) gilt
+--    nicht als "Reihe nie begonnen" (vorher fiel er still weg, 151 Schritte bei der Allianz)
+ResetWorld(22)
+W.onLog[901500] = true
+AddRoute({ id = "T:route:sofort", k = "route", n = "Sofort", s = {
+    { a = { { "accept", q = 901500 } } },
+    { a = { { "accept", q = 901501 }, { "turnin", q = 901501 } } },
+} })
+ns.cdb.route = "T:route:sofort"
+tv = R.Evaluate()
+check("Annehmen und sofort abgeben: Schritt bleibt Haupt-Schritt", tv.main == 2, "Schritt " .. tostring(tv.main))
+ns.cdb.route = nil
+
+-- u) Simulation 2026-11-17: Optionaler Schritt gilt nicht als verpasst, nur weil ein späterer Schritt scheinbar
+--    erledigt ist (Ziel einer noch nicht angenommenen Quest)
+ResetWorld(22)
+W.onLog[901601] = true
+AddRoute({ id = "T:route:optional", k = "route", n = "Optional", s = {
+    { o = true, a = { { "turnin", q = 901601 } } },
+    { a = { { "complete", q = 901602, o = 1 } } },
+    { a = { { "accept", q = 901603 } } },
+} })
+ns.cdb.route = "T:route:optional"
+tv = R.Evaluate()
+check("Optional: späterer Schritt nur scheinbar erledigt -> optionale Abgabe bleibt", tv.main == 1,
+    "Schritt " .. tostring(tv.main))
+W.turned[901602], W.onLog[901603] = true, true
+tv = R.Evaluate()
+ns.cdb.pointer["T:route:optional"] = nil
+tv = R.Evaluate()
+check("Optional: späterer Schritt wirklich gemacht -> optionale Abgabe verpasst", tv.main ~= 1,
+    "Schritt " .. tostring(tv.main))
+ns.cdb.route = nil
+
+-- v) Simulation 2026-11-17: Dungeon-Vorbereitung wartet nicht auf die Quest einer anderen Klasse (Bedingung an
+--    der Annahme selbst, z. B. nur Priester; vorher wurde die Vorbereitung für den Paladin nie fertig)
+ResetWorld(40)
+AddRoute({ id = "T:dungeonquests:klasse", k = "dungeonquests", n = "Klasse", s = {
+    { a = { { "accept", q = 901701, c = "Priest" }, { "accept", q = 901702 } } },
+    { a = { { "complete", q = 901701, o = 1 }, { "complete", q = 901702, o = 1 } } },
+} })
+W.onLog[901702] = true
+check("Vorbereitung: Quest nur für Priester hält den Paladin nicht auf",
+    R.PrepDone(R.Get("T:dungeonquests:klasse"), S.Player()) == true)
+
+-- w) Regression 2026-11-17: Rechtsklick auf eine andere Zeile beendet "Zurück" nicht
+ResetWorld(22)
+AddRoute({ id = "T:route:zurueck2", k = "route", n = "Zurueck2", s = {
+    { a = { { "accept", q = 901801 } } }, { a = { { "accept", q = 901802 } } },
+    { a = { { "accept", q = 901803 } } }, { a = { { "accept", q = 901804 } } },
+} })
+W.onLog[901801], W.onLog[901802] = true, true
+ns.cdb.route = "T:route:zurueck2"
+tv = R.Evaluate()
+R.Back(tv)
+R.Skip(4) -- andere Zeile
+tv = R.Evaluate()
+check("Zurück: Überspringen einer anderen Zeile lässt den Schritt stehen", tv.main == 2, "Schritt " .. tostring(tv.main))
+ns.cdb.route = nil
+
+-- x) 2026-11-17: Riverglades-Routen der Allianz binden ihre Schritte per #include aus eigenen Guides ein. Vorher
+--    hatte "38-40 Riverglades" nur 3 Schritte; jetzt die eingebundenen Quests und die Route läuft durch.
+do
+    local rg = R.Get("A:route:38-40 Riverglades")
+    local accepts = 0
+    for _, s in ipairs(rg and rg.s or {}) do
+        for _, a in ipairs(s.a) do if a[1] == "accept" then accepts = accepts + 1 end end
+    end
+    check("Riverglades: eingebundene Schritte vorhanden", rg ~= nil and #rg.s > 100 and accepts > 50,
+        rg and (#rg.s .. " Schritte, " .. accepts .. " Annahmen") or "Route fehlt")
+    ResetWorld(38)
+    ns.cdb.route = "A:route:38-40 Riverglades"
+    local mains, stuck = PlayRoute(4 * #rg.s)
+    check("Riverglades: Route läuft im Testspiel bis zum Ende", stuck == nil and mains > 30,
+        stuck or (mains .. " Haupt-Schritte"))
+    ns.cdb.route = nil
+end
+
+-- i) Audit 2026-11-17: Der Fortschrittszeiger überspringt keine offenen Vorlauf-, Dauer- und "erledigt mit"-
+--    Schritte vor dem Haupt-Schritt (vorher sprang er auf den Haupt-Schritt, und sie verschwanden nach der
+--    ersten Auswertung).
+ResetWorld(22)
+W.onLog[900301] = true
+AddRoute({ id = "T:route:zeiger", k = "route", n = "Zeiger", s = {
+    { a = { { "accept", q = 900301 } } },
+    { st = true, a = { { "complete", q = 900301, o = 1 } } },
+    { cw = "next", a = { { "complete", q = 900301, o = 2 } } },
+    { a = { { "accept", q = 900303 } } },
+} })
+ns.cdb.route = "T:route:zeiger"
+local z1 = R.Evaluate()
+local z2 = R.Evaluate()
+check("Zeiger: Dauer- und Mit-Schritt bleiben nach der zweiten Auswertung", z1.main == 4 and z2.main == 4
+    and #z2.sticky == 1 and #z2.with == 1, ("1.: %d/%d, 2.: %d/%d"):format(#z1.sticky, #z1.with, #z2.sticky, #z2.with))
+ns.cdb.route = nil
 
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)

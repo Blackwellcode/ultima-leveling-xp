@@ -71,6 +71,7 @@ local function LoadRoutes()
         if r.f == letter or r.f == "B" then ns.routes[#ns.routes + 1] = r end
     end
     R.Reindex()
+    R.CheckVersions()
     ns.Fire("ROUTES_LOADED")
     return #ns.routes > 0
 end
@@ -82,7 +83,7 @@ local function DoUpdate()
     if not ns.questsReady then return end -- Questlog noch leer: keine Route wechseln, nichts anzeigen
     if not ns.cdb.route or not R.Get(ns.cdb.route) then
         local id = R.AutoSelect(true)
-        if id then print(ns.PREFIX .. ns.F("Route: %s", R.Get(id).n)) end
+        if id then print(ns.PREFIX .. ns.F("Route: %s", R.DisplayName(R.Get(id)))) end
     end
     local view = R.Evaluate()
     if view.finished and view.route and ns.cdb.returnRoute and R.Get(ns.cdb.returnRoute) then
@@ -93,13 +94,13 @@ local function DoUpdate()
         if view.route.k == "dungeonquests" then
             print(ns.PREFIX .. ns.F("All quests for %s collected. Back to %s.", R.DisplayName(view.route), R.DisplayName(R.Get(back))))
         else
-            print(ns.PREFIX .. ns.F("Bonus route finished, continuing with %s", R.Get(back).n or back))
+            print(ns.PREFIX .. ns.F("Bonus route finished, continuing with %s", R.DisplayName(R.Get(back)) or back))
         end
         view = R.Evaluate()
     elseif view.finished and view.route then
         local nextId = R.Advance(view)
         if nextId then
-            print(ns.PREFIX .. ns.F("Continuing with %s", R.Get(nextId).n or nextId))
+            print(ns.PREFIX .. ns.F("Continuing with %s", R.DisplayName(R.Get(nextId)) or nextId))
             view = R.Evaluate()
         end
     end
@@ -138,26 +139,18 @@ local function CheckOffers()
     end
     if not known then return end -- Angebot ohne Quest-IDs: keine sichere Aussage möglich
     local npc = UnitName("npc")
+    if not npc then return end
     local step = view.route.s[view.main]
-    local isGiver = false
-    for _, a in ipairs(step.a) do
-        if a[1] == "target" and a.names then
-            for _, n in ipairs(a.names) do if n == npc or ns.NPC(n) == npc then isGiver = true end end
-        end
-    end
-    if not isGiver then return end -- Name unbekannt (keine Übersetzung): nichts folgern
-    local pending = ns.Progress.Pending(step, ns.State.Player(), view.route.id, view.main)
-    -- Steht im selben Schritt noch eine Abgabe aus, bietet der NPC die Folgequest erst danach an:
-    -- dann lässt sich aus dem Angebot nichts schließen.
-    for _, entry in ipairs(pending) do
-        if entry.a[1] == "turnin" then return end
-    end
-    for _, entry in ipairs(pending) do
-        local q = entry.a.q
-        if entry.a[1] == "accept" and q and not offered[q] then
-            ns.cdb.unavail[q] = true
-            print(ns.PREFIX .. ns.F("Quest %s is not offered here, moving on.", ns.State.QuestTitle(q) or tostring(q)))
-        end
+    local player = ns.State.Player()
+    local open = {}
+    for _, entry in ipairs(ns.Progress.Pending(step, player, view.route.id, view.main)) do open[entry.a] = true end
+    local missing = R.NotOffered(ns.Progress.Actions(step, player),
+        function(entry) return open[entry.a] == true end,
+        function(n) return n == npc or ns.NPC(n) == npc end, offered)
+    if #missing == 0 then return end -- NPC unbekannt (keine Übersetzung) oder alles im Angebot
+    for _, q in ipairs(missing) do
+        ns.cdb.unavail[q] = true
+        print(ns.PREFIX .. ns.F("Quest %s is not offered here, moving on.", ns.State.QuestTitle(q) or tostring(q)))
     end
     ns.RequestUpdate()
 end
@@ -186,6 +179,9 @@ end)
 
 local function OnEvent(_, event, a1, a2, a3)
     if event == "PLAYER_ENTERING_WORLD" then
+        -- nach /reload oder Verbindungsabbruch im Flug: PLAYER_CONTROL_LOST kam in dieser Sitzung nie, die
+        -- Landung soll den Flug trotzdem als erledigt merken
+        if UnitOnTaxi and UnitOnTaxi("player") then onTaxi = true end
         ns.EnsureFonts()
         C_Timer.After(3, function() ns.Guard("Fonts", ns.EnsureFonts) end)
         if not LoadRoutes() then return end

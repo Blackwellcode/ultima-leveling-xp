@@ -251,7 +251,8 @@ local function GetRow(i)
         if not self.full then return end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(self.full, 1, 1, 1, 1, true)
-        GameTooltip:AddLine(ns.L["Right-click: skip step"], C.text3[1], C.text3[2], C.text3[3])
+        -- nur Zeilen eines Schritts dieser Route lassen sich überspringen (Nachholen, Mitgenommenes nicht)
+        if self.si then GameTooltip:AddLine(ns.L["Right-click: skip step"], C.text3[1], C.text3[2], C.text3[3]) end
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function(self)
@@ -293,6 +294,7 @@ local function FillRow(row, index, ref, entry, y, waypoint, width)
         local d = S.Distance(a)
         if d then
             row.dist:SetText(Meters(d))
+            ns.Fit(row.dist, FIG_W, 14) -- "12.5 km" passt sonst nicht in die Zahlenspalte
             row.time:SetText(Clock(d / Speed()))
             row.dist:Show()
             row.time:Show()
@@ -317,15 +319,13 @@ local function FillRow(row, index, ref, entry, y, waypoint, width)
         x = STEP_ICON + 4
         if row.styleKey ~= "step" then
             row.styleKey = "step"
-            row.text:SetFont(ns.FontPath("Bold"), SZ.display, "")
-            row.text.baseSize = SZ.display
+            ns.Restyle(row.text, "Bold", SZ.display)
         end
         row.text:SetText(text or "")
     else
         if row.styleKey ~= "row" then
             row.styleKey = "row"
-            row.text:SetFont(ns.FontPath("Medium"), SZ.body, "")
-            row.text.baseSize = SZ.body
+            ns.Restyle(row.text, "Medium", SZ.body)
         end
         local verb, object = SplitVerb(text)
         x = VERB_W
@@ -404,7 +404,8 @@ local function GetLeg(i)
     leg.line = Hairline(leg, "BORDER")
     leg.line:SetWidth(1)
     leg.line:SetPoint("TOP", leg.mark, "BOTTOM", 0, -3)
-    leg.line:SetPoint("BOTTOM", leg, "BOTTOM", 0, -6)
+    -- endet 3 px über der Marke der nächsten Etappe (Etappenhöhe = Zeilenabstand, siehe RenderTravel)
+    leg.line:SetPoint("BOTTOM", leg, "BOTTOM", 0, 1)
     leg.text = Label(leg, SZ.body, C.text, "Medium")
     leg.text:SetPoint("TOPLEFT", leg, "TOPLEFT", 18, 0)
     leg.sub = Label(leg, SZ.small, C.text2, "Medium")
@@ -446,8 +447,10 @@ local function RenderTravel(plan, y, width)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", panel.travel, "TOPLEFT", 0, inner)
         row:SetWidth(width)
+        local stepH = (sub and sub ~= "") and 38 or 26
+        row:SetHeight(stepH)
         row:Show()
-        inner = inner - ((sub and sub ~= "") and 38 or 26)
+        inner = inner - stepH
         if not leg.done then current = false end
     end
     for i = #plan + 1, #legs do legs[i]:Hide() end
@@ -515,6 +518,8 @@ end
 function ns.ApplyPanelAlpha()
     if not panel then return end
     local w = ns.db.window
+    -- vor dem ersten Kampf-Ereignis (z. B. /reload im Kampf) den Zustand vom Spiel holen
+    if panel.inCombat == nil then panel.inCombat = InCombatLockdown() and true or false end
     panel:SetAlpha(panel.inCombat and math.min(w.alpha, w.combatAlpha) or w.alpha)
 end
 
@@ -593,7 +598,7 @@ local function RenderHeader(view)
         local at = view.main or total
         local sub = route.k == "dungeonquests" and ns.F("Dungeon quests, step %d of %d", at, total)
             or ns.F("Step %d of %d", at, total)
-        local parked = (view.waiting or 0) + #(view.open or {})
+        local parked = (view.waiting or 0) + #(view.open or {}) + #(view.carried or {})
         if parked > 0 then sub = sub .. ", " .. ns.F("%d postponed", parked) end
         panel.sub:SetText(sub)
         ns.Fit(panel.sub, HEAD_W, 9)
@@ -634,7 +639,10 @@ local function Render(view)
     local route = view.route
     local width = CW
     local alerts = RenderTiles()
-    local y = ns.db.tiles.shown and (TILE_Y - TILE_H - 8) or (TILE_Y + 2)
+    -- tatsächlicher Zustand der Kacheln: im Kampf wechseln sie nicht (geschützt), das Layout folgt ihnen
+    local tilesShown = ns.db.tiles.shown
+    if tiles[1] then tilesShown = tiles[1]:IsShown() end
+    local y = tilesShown and (TILE_Y - TILE_H - 8) or (TILE_Y + 2)
     -- Warnungen (Gruppe, Dungeon) als Zeile unter der Statusleiste; "alles in Ordnung" braucht keine Zeile
     local warn = {}
     for _, a in ipairs(alerts) do if a.state ~= "ok" then warn[#warn + 1] = a end end
@@ -941,7 +949,8 @@ local function ToggleDungeons(anchor)
 end
 
 local function TogglePicker(anchor)
-    if picker and picker:IsShown() then picker:Hide() return end
+    -- nur die eigene Liste schließen; ist die Dungeon-Liste offen, wechselt der Knopf zur Routenliste
+    if picker and picker:IsShown() and picker.mode ~= "dungeons" then picker:Hide() return end
     local player = S.Player()
     local entries = {}
     local route = ns.cdb.route and R.Get(ns.cdb.route)
@@ -972,12 +981,17 @@ local function TogglePicker(anchor)
     ShowList(anchor, entries)
     picker.mode = "routes"
 end
-ns.ToggleRoutePicker = function() if panel then TogglePicker(panel.listButton) end end
-ns.ToggleDungeonPicker = function()
-    if not panel then return end
-    if not panel:IsShown() and not InCombatLockdown() then panel:Show() end
-    ToggleDungeons(panel.listButton)
+-- Die Listen hängen am Fenster: ist es versteckt, erst zeigen (im Kampf geht das nicht, dann keine Liste,
+-- sonst wäre sie unsichtbar "offen")
+local function PanelReady()
+    if not panel then return false end
+    if panel:IsShown() then return true end
+    if InCombatLockdown() then return false end
+    panel:Show()
+    return true
 end
+ns.ToggleRoutePicker = function() if PanelReady() then TogglePicker(panel.listButton) end end
+ns.ToggleDungeonPicker = function() if PanelReady() then ToggleDungeons(panel.listButton) end end
 
 -------------------------------------------------------------------------------
 -- Aufbau
@@ -1126,7 +1140,7 @@ local function Build()
         fold = function(self)
             ns.db.window.collapsed = not ns.db.window.collapsed
             self:SetGlyph(ns.db.window.collapsed and "plus" or "minus")
-            Render()
+            ns.Guard("Panel", Render)
         end,
     }
     panel.buttonByKey = {}

@@ -47,7 +47,9 @@ end
 function C.Eval(text, ctx)
     if not text or text == "" then return true end
     ctx = ctx or ns.State.Player()
-    local key = ctx.race .. ctx.class .. ctx.faction .. ctx.level
+    -- alles, wovon ein Begriff abhängt (sehr früh beim Laden können Felder noch fehlen)
+    local key = table.concat({ tostring(ctx.race), tostring(ctx.class), tostring(ctx.faction), tostring(ctx.level),
+        tostring(ctx.sex), tostring(ctx.game), tostring(ctx.locale) }, "|")
     if key ~= cacheKey then cache, cacheKey = {}, key end
     local v = cache[text]
     if v == nil then

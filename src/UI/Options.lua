@@ -87,7 +87,9 @@ local CATEGORIES = {
     { key = "route", label = "Route", options = {
         { type = "header", label = "Route choice" },
         { type = "cycle", path = "routeKind", label = "Route type",
-          values = { { "route", "Quest routes" }, { "dungeonroute", "Routes with dungeons" } } },
+          values = { { "route", "Quest routes" }, { "dungeonroute", "Routes with dungeons" } },
+          -- wie im Willkommensfenster und in der Routenliste: die Route sofort neu wählen
+          after = function() ns.Runner.AutoSelect(true); ns.RequestUpdate() end },
         { type = "toggle", path = "predecessorFirst", label = "Finish the previous route first",
           hint = "Avoids being sent to enemies far above your level." },
         { type = "toggle", path = "dungeonSteps", label = "Show dungeon steps",
@@ -154,7 +156,9 @@ local CATEGORIES = {
         { type = "note", label = "Choose the build with the arrows next to the talent window." },
     } },
     { key = "lang", label = "Language", options = {
-        { type = "cycle", path = "lang", label = "Interface language", values = LanguageValues, chosen = "langChosen" },
+        { type = "cycle", path = "lang", label = "Interface language", values = LanguageValues, chosen = "langChosen",
+          -- Fenster tragen ihre Texte vom Aufbau: vollständig erst nach /reload, das sagt die Chatzeile
+          after = function() print(ns.PREFIX .. ns.F("Language: %s. Takes full effect after /reload.", ns.LANG)) end },
         { type = "note", label = "Route hints and NPC names follow your game client's language where a translation exists. Missing parts stay English: route hints in Korean, Russian, Traditional Chinese and Italian, NPC names in Portuguese and Italian, some German route hints." },
     } },
 }
@@ -187,6 +191,7 @@ local function Changed(opt)
     if opt.chosen then ns.db[opt.chosen] = Get(opt.path) ~= "auto" or nil end
     if opt.manual then Set(opt.manual, false) end -- von Hand gestellt: Automatik aus
     ns.ApplySettings()
+    if opt.after then opt.after() end
     if current then current:Refresh() end
 end
 
@@ -347,14 +352,17 @@ end
 
 -- Einstellungen einer Kategorie auf die Vorgaben zurücksetzen
 local function ResetCategory(category)
+    local after = {}
     for _, opt in ipairs(category.options) do
         if opt.path then
             local value = Default(opt.path)
             if type(value) ~= "table" then Set(opt.path, value) end
             if opt.chosen then ns.db[opt.chosen] = nil end
+            if opt.after then after[#after + 1] = opt.after end
         end
     end
     ns.ApplySettings()
+    for _, fn in ipairs(after) do fn() end
 end
 
 local function Build()

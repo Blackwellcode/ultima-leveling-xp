@@ -171,23 +171,50 @@ end
 
 -- Wie viele Punkte früher als üblich (Legacy-Perk "Talented"): 0 bis 5
 function T.Bonus(total, level)
-    if level >= 60 then return 0 end
+    -- ohne Punkte keine früheren Punkte (vorher: Stufe 1 ohne Punkte ergab Bonus 5); mit dem Perk gibt es
+    -- unter Stufe 10 schon Punkte, dann gilt die Formel
+    if level >= 60 or total <= 0 then return 0 end
     return math.max(0, math.min(5, total - (level - 9)))
 end
 
--- Zielränge je Knoten nach den ersten upTo Punkten einer Liste; dazu die Zahl nicht gefundener Schritte
+-- Zielränge je Knoten nach den ersten upTo Punkten einer Liste; dazu die Zahl nicht gefundener Talente
+-- (je Talent einmal, nicht je Rang)
 local function Targets(t, steps, first, upTo)
-    local want, missing = {}, 0
+    local want, missingSet, missing = {}, {}, 0
     for i, step in ipairs(steps) do
         if first + i - 1 > upTo then break end
         local node = T.Node(t, step.spell)
         if node then
             if step.rank > (want[node.id] or 0) then want[node.id] = step.rank end
-        else
+        elseif not missingSet[step.spell] then
+            missingSet[step.spell] = true
             missing = missing + 1
         end
     end
     return want, missing
+end
+
+-- Ränge über dem Ziel. Builds ohne Vorphase, deren Liste erst bei Punkt "first" beginnt (first = 6): die
+-- Punkte davor sind frei, so viele Ränge außerhalb des Builds zählen nicht als falsch.
+local function Excess(t, want, build)
+    local over, list = 0, {}
+    for _, n in ipairs(t.nodes) do
+        local extra = n.ranks - (want[n.id] or 0)
+        if extra > 0 then
+            over = over + extra
+            list[#list + 1] = n
+        end
+    end
+    local free = (not build.pre and build.first or 1) - 1
+    if over <= free then return 0, {} end
+    return over, list
+end
+
+-- Passung der verteilten Punkte zu Zielrängen: passende Ränge zählen, Ränge außerhalb abziehen
+local function Score(t, want, build)
+    local score = 0
+    for _, n in ipairs(t.nodes) do score = score + math.min(n.ranks, want[n.id] or 0) end
+    return score - Excess(t, want, build)
 end
 
 -------------------------------------------------------------------------------
@@ -200,6 +227,8 @@ function T.Choose()
     if #builds == 0 then return nil end
     local chosen = ns.cdb and ns.cdb.talentBuild
     if chosen and builds[chosen] then return builds[chosen], chosen end
+    -- gemerkte Nummer gibt es nicht mehr (weniger Builds nach einem Datenupdate): wieder automatisch
+    if chosen and ns.cdb then ns.cdb.talentBuild = nil end
     local t = T.Tree()
     if t then
         local level = T.Level()
@@ -209,11 +238,11 @@ function T.Choose()
             -- Vergleich mit den Zielrängen bei der aktuellen Punktzahl: passende Ränge zählen,
             -- Ränge außerhalb des Builds abziehen. Gleichstand: der Vorschlag der Klasse gewinnt.
             local steps, first = T.ActiveList(build, level)
-            local want = Targets(t, steps, first, total)
-            local score = 0
-            for _, n in ipairs(t.nodes) do
-                local target = want[n.id] or 0
-                score = score + math.min(n.ranks, target) - math.max(0, n.ranks - target)
+            local score = Score(t, Targets(t, steps, first, total), build)
+            -- Ab der Stufe der Neuverteilung liegen die Punkte noch nach der Vorphase: auch dagegen werten,
+            -- sonst springt die Wahl zu einem anderen Build und der Hinweis "neu verteilen" fehlt
+            if build.pre and level >= build.preUntil then
+                score = math.max(score, Score(t, Targets(t, Parse(build.pre), 1, total), build))
             end
             if score > bestScore or (score == bestScore and score > 0 and build.default) then
                 best, bestIndex, bestScore = build, i, score
@@ -264,7 +293,7 @@ end
 --   final    [nodeID] = Zielrang im fertigen Build (alle 51 Punkte)
 --   next     kommende Schritte: { node, spell, rank, point, level, ready }
 --   wrong    Knoten mit mehr Rängen als vorgesehen
---   missing  Schritte, deren Talent im Baum nicht gefunden wurde
+--   missing  Talente des Builds, die im Baum nicht gefunden wurden (je Talent einmal)
 --   early    Vorphase aktiv; respec: Stufe der Neuverteilung ist erreicht und Punkte liegen falsch
 -- }
 function T.Plan()
@@ -283,9 +312,7 @@ function T.Plan()
         level = level, bonus = bonus, want = want, final = final, missing = missing,
         next = {}, wrong = {}, early = early,
     }
-    for _, n in ipairs(t.nodes) do
-        if n.ranks > (want[n.id] or 0) then plan.wrong[#plan.wrong + 1] = n end
-    end
+    plan.wrong = select(2, Excess(t, want, build))
     plan.respec = build.pre ~= nil and not early and #plan.wrong > 0
     -- Schritte in Reihenfolge, die noch fehlen; "ready" für so viele, wie Punkte frei sind
     local ready = 0

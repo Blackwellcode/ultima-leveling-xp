@@ -36,6 +36,7 @@ local ELITE = { elite = true, rareelite = true, worldboss = true }
 local function DangerTier(unit, level)
     if level <= 0 then return 1 end
     local class = UnitClassification(unit)
+    if IsSecret(class) then class = nil end -- geschützt (Kampf): nur nach Level warnen
     if class == "worldboss" then return 1 end
     local diff = level - UnitLevel("player")
     if diff >= db.dangerDiff then return 1 end
@@ -104,7 +105,9 @@ function QuestSource.Objectives(npcId)
     if not questTooltips then return nil, 0 end
     local ok, first, extra = pcall(ReadObjectives, npcId)
     if not ok then
+        -- einmal melden (Chat und Fehler-Handler), dann bis /reload aus: sonst wirft jede Plakette erneut
         QuestSource.Disable(tostring(first))
+        ns.Guard("Plates (Questie)", error, tostring(first), 0)
         return nil, 0
     end
     return first, extra
@@ -115,7 +118,7 @@ ns.QuestSource = QuestSource
 local function QuestInfo(unit)
     if not questTooltips then return nil end
     local guid = UnitGUID(unit)
-    if not guid or IsSecret(guid) then return nil end
+    if IsSecret(guid) or not guid then return nil end
     local unitType, _, _, _, _, npcId = strsplit("-", guid)
     if (unitType ~= "Creature" and unitType ~= "Vehicle") or not npcId then return nil end
     local first, extra = QuestSource.Objectives(npcId)
@@ -206,10 +209,12 @@ local function Paint(w, unit, anchor)
     w:ClearAllPoints()
     w:SetAllPoints(anchor)
 
+    -- Erst auf Schutz prüfen, dann den Wert: ein Wahrheitstest auf einen geschützten Wert wirft einen Fehler
     local level = UnitLevel(unit)
     local attackable = UnitCanAttack("player", unit)
-    local npc = not UnitIsPlayer(unit)
-    local showLevel = level and not IsSecret(level) and not IsSecret(attackable) and attackable and npc
+    local isPlayer = UnitIsPlayer(unit)
+    local showLevel = not IsSecret(level) and not IsSecret(attackable) and not IsSecret(isPlayer)
+        and level and attackable and not isPlayer
 
     -- Nameplates haben keinen EllesmereUI-Rahmen mehr (showBorder aus): dieser Rahmen ist der
     -- einzige. Am Zielrahmen, der einen eigenen Rahmen hat, erscheint er nur bei Levelfarbe.
@@ -250,8 +255,8 @@ local function Paint(w, unit, anchor)
         w.warn:SetAlpha(1)
     end
 
-    local icon, text = nil, nil
-    if npc then icon, text = QuestInfo(unit) end
+    -- QuestInfo prüft selbst: nur NPCs (GUID-Typ Creature/Vehicle), Schutz vor geschützten Werten
+    local icon, text = QuestInfo(unit)
     if icon then
         w.quest.icon:SetTexture(icon)
         w.quest.text:SetText(text)
@@ -314,7 +319,7 @@ local function UpdateTarget()
         targetWidget.level = targetWidget:CreateFontString(nil, "OVERLAY")
         targetWidget.level:SetFont(FONT, 16, "OUTLINE")
     end
-    if not UnitExists("target") then
+    if not (db and db.enabled) or not UnitExists("target") then
         targetWidget:Hide()
         return
     end
@@ -322,7 +327,7 @@ local function UpdateTarget()
 
     local lv = targetWidget.level
     local level = UnitLevel("target")
-    if level and not IsSecret(level) then
+    if not IsSecret(level) and level then
         lv:ClearAllPoints()
         lv:SetPoint("LEFT", frame, "RIGHT", 8, 9)
         lv:SetText(level > 0 and level or "??")
@@ -342,14 +347,14 @@ local function RefreshAllSoon()
     refreshPending = true
     C_Timer.After(0.2, function()
         refreshPending = false
-        UpdateAllPlates()
-        UpdateTarget()
+        ns.Guard("Plates", UpdateAllPlates)
+        ns.Guard("Plates", UpdateTarget)
     end)
 end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
-events:SetScript("OnEvent", function(_, event, unit)
+local function OnEvent(event, unit)
     if event == "PLAYER_LOGIN" then
         db = ns.db.questPlates
         ownsPlateBorder = C_AddOns.IsAddOnLoaded("EllesmereUINameplates") and true or false
@@ -363,11 +368,13 @@ events:SetScript("OnEvent", function(_, event, unit)
         events:RegisterEvent("UNIT_FACTION")
         events:RegisterEvent("UNIT_CLASSIFICATION_CHANGED")
         events:RegisterUnitEvent("UNIT_QUEST_LOG_CHANGED", "player")
+        -- nach dem Kampf neu zeichnen: im Kampf geschützte Werte ließen Rahmen und Marker leer
+        events:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
     if event == "NAME_PLATE_UNIT_ADDED" then
         -- Eine Runde warten: EllesmereUI haengt seine Plate im selben Ereignis an.
-        C_Timer.After(0, function() UpdatePlate(unit) end)
+        C_Timer.After(0, function() ns.Guard("Plates", UpdatePlate, unit) end)
     elseif event == "NAME_PLATE_UNIT_REMOVED" then
         local w = plateWidgets[unit]
         if w then
@@ -382,7 +389,8 @@ events:SetScript("OnEvent", function(_, event, unit)
     else
         RefreshAllSoon()
     end
-end)
+end
+events:SetScript("OnEvent", function(_, event, unit) ns.Guard("Plates", OnEvent, event, unit) end)
 
 -- /ultima und das Optionsfenster zeichnen nach jeder Änderung neu.
 ns.RefreshQuestPlates = RefreshAllSoon

@@ -64,7 +64,7 @@ local function Handle(msg)
         ns.ToggleRoutePicker()
     elseif cmd == "auto" then
         local id = R.AutoSelect(true)
-        print(ns.PREFIX .. (id and ns.F("Route: %s", R.Get(id).n) or L["No matching route found."]))
+        print(ns.PREFIX .. (id and ns.F("Route: %s", R.DisplayName(R.Get(id))) or L["No matching route found."]))
         -- Begründung der Wahl (technische Ausgabe): Routen im Levelbereich mit offenen Quests und Folge-Routen
         local player = ns.State.Player()
         for _, r in ipairs(R.Candidates(player, ns.db.routeKind or "route")) do
@@ -92,7 +92,9 @@ local function Handle(msg)
         for _, line in ipairs(ns.TalentReport()) do print(ns.PREFIX .. line) end
     elseif cmd == "reset" then
         ns.db.window.point, ns.db.arrow.point = nil, nil
-        print(ns.PREFIX .. L["Positions reset, takes effect after /reload."])
+        -- sofort anwenden wie der Knopf im Optionsfenster (vorher erst nach /reload)
+        ns.Guard("Settings", ns.ApplySettings, true)
+        print(ns.PREFIX .. L["Positions reset."])
     elseif cmd == "debug" then
         -- Zustand ausgewaehlter Texte, um unsichtbare Schrift im Spiel einzugrenzen (technische Ausgabe)
         print(ns.PREFIX .. "debug")
@@ -137,7 +139,7 @@ local function Handle(msg)
             print(ns.PREFIX .. ns.F("This Questie version is not supported, quest markers stay off (%s).", ns.questieIncompatible))
         end
     else
-        print(ns.PREFIX .. L["/ultima [options | arrow | routes | auto | quests | talents | border | hints | language | reset | status | debug]"])
+        print(ns.PREFIX .. L["/ultima [options | arrow | routes | dungeon | welcome | auto | quests | talents | border | hints | language | reset | status | debug]"])
     end
 end
 

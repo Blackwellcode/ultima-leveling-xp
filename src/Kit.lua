@@ -79,7 +79,9 @@ function U.Label(parent, size, color, layer, weight)
     local fs = parent:CreateFontString(nil, layer or "OVERLAY", GameFontHighlightSmall and "GameFontHighlightSmall" or nil)
     size = math.floor(size + 0.5)
     fs:SetFont(U.FontPath(weight), size, "")
-    labels[#labels + 1] = { fs = fs, weight = weight, size = size }
+    local entry = { fs = fs, weight = weight, size = size }
+    labels[#labels + 1] = entry
+    fs.labelEntry = entry
     fs.baseSize = size -- gewünschte Größe; GetFont kann anfangs noch die kleinere Vorlagen-Größe melden
     -- Flache Schrift auf deckender Graphitfläche: kein Schatten (die Spielvorlage bringt einen mit)
     fs:SetShadowOffset(0, 0)
@@ -87,6 +89,15 @@ function U.Label(parent, size, color, layer, weight)
     fs:SetTextColor(c[1], c[2], c[3], c[4] or 1)
     fs:SetJustifyH("LEFT")
     return fs
+end
+
+-- Schnitt und Größe eines Textfelds später ändern (Schrittsatz <-> Zeile). Über diese Funktion, damit
+-- EnsureFonts nach dem Ladebildschirm den neuen Stil setzt und nicht den vom Anlegen.
+function U.Restyle(fs, weight, size)
+    size = math.floor(size + 0.5)
+    if fs.labelEntry then fs.labelEntry.weight, fs.labelEntry.size = weight, size end
+    fs.baseSize = size
+    fs:SetFont(U.FontPath(weight), size, "")
 end
 
 -------------------------------------------------------------------------------
@@ -110,6 +121,13 @@ function U.RunSpeed()
     local speed = GetUnitSpeed("player")
     -- erst auf Schutz pruefen: auch ein Vergleich mit nil ist bei geschuetzten Werten nicht sicher
     if U.IsSecret(speed) or speed == nil then return lastSpeed end
+    -- Flug, Fallen und Schwimmen sind keine Reisegeschwindigkeit: nicht übernehmen
+    local taxi = UnitOnTaxi and UnitOnTaxi("player")
+    local falling = IsFalling and IsFalling()
+    local swimming = IsSwimming and IsSwimming()
+    if U.IsSecret(taxi) or U.IsSecret(falling) or U.IsSecret(swimming) or taxi or falling or swimming then
+        return lastSpeed
+    end
     if speed >= 1 then lastSpeed = speed end
     return lastSpeed
 end
@@ -124,6 +142,9 @@ function U.Guard(label, fn, ...)
         if not reported[key] then
             reported[key] = true
             print(ns.WARN .. label .. ": " .. tostring(err))
+            -- auch an den Fehler-Handler des Spiels (BugSack, BugGrabber), damit der Fehler gesammelt wird
+            local handler = geterrorhandler and geterrorhandler()
+            if handler then handler(label .. ": " .. tostring(err)) end
         end
     end
     return ok

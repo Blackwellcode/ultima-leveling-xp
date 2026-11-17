@@ -8,6 +8,7 @@ local S = ns.State
 local L = ns.L
 
 local DOCK_RADIUS = 15        -- Yards: Hafen erreicht
+local DOCK_MEMORY = 150       -- Sekunden nach dem Verlassen des Stegs: Überfahrt bis zum Ladebildschirm
 local RIDE_COST = 600         -- Yards-Aequivalent für die Überfahrt, damit kurze Wege zaehlen
 -- Faehren ohne Gegenrichtung in den Daten sind oft Fehleintraege ("Schiff nach X" mitten im Land).
 -- Sie bleiben moeglich (z. B. Zeppeline der Horde), zaehlen aber deutlich teurer.
@@ -16,13 +17,16 @@ local KIND_NAME = { boat = "Boat", zeppelin = "Zeppelin", tram = "Tram" } -- Sch
 
 local docks -- vorbereitete Faehren mit Weltpunkt und Kontinenten
 
+local docksFaction
 local function Prepare()
-    if docks then return docks end
-    docks = {}
+    -- nur Fähren der eigenen Fraktion (Häfen in Städten der Gegenseite sind keine Option)
+    local own = UnitFactionGroup("player") == "Alliance" and "A" or "H"
+    if docks and docksFaction == own then return docks end
+    docks, docksFaction = {}, own
     for _, t in ipairs(UltimaTravelData or ns.travelData or {}) do
         local x, y, ci = S.WorldPoint(t)
         local destCi = S.ZoneContinent(t.dest)
-        if x and ci and destCi and ci ~= destCi then
+        if x and ci and destCi and ci ~= destCi and (t.f == nil or t.f == "B" or t.f == own) then
             docks[#docks + 1] = { t = t, x = x, y = y, ci = ci, destCi = destCi }
         end
     end
@@ -55,8 +59,16 @@ local MIN_SAVING_SHARE = 0.25 -- und mindestens dieser Anteil der Laufzeit
 local HEARTHSTONE_ITEM = 6948
 T.FLIGHT_RADIUS = 15
 
+-- Eigene Geschwindigkeit: auf dem Reittier schneller als zu Fuß (sonst rät der Plan Berittenen zum Flug, obwohl
+-- Reiten schneller wäre). Mindestens Laufen, höchstens das schnellste Reittier (Schwimmen, Fallen, Flug zählen nicht).
+local MAX_SPEED = 14
+local function Speed()
+    local speed = ns.RunSpeed and ns.RunSpeed() or WALK_SPEED
+    return math.min(MAX_SPEED, math.max(WALK_SPEED, speed))
+end
+
 local function WalkTime(ci, ax, ay, bx, by)
-    return (S.WorldDistance(ci, ax, ay, bx, by) or 1e9) * WALK_DETOUR / WALK_SPEED
+    return (S.WorldDistance(ci, ax, ay, bx, by) or 1e9) * WALK_DETOUR / Speed()
 end
 
 function T.Flights()
@@ -79,8 +91,12 @@ end
 local function HearthNode(flights)
     local bind = GetBindLocation and GetBindLocation()
     if not bind or bind == "" then return nil end
+    -- Der Ort kommt in Client-Sprache: verglichen wird mit dem beim Flugmeister gesehenen Namen des
+    -- Flugpunkts (ebenfalls Client-Sprache), sonst mit dem englischen Namen aus den Daten.
+    local seen = ns.cdb.taxiNames or {}
     for id, node in pairs(flights) do
-        if node.n:sub(1, #bind + 1) == bind .. "," then return id end
+        local name = seen[id] or node.n
+        if name:sub(1, #bind + 1) == bind .. "," or node.n:sub(1, #bind + 1) == bind .. "," then return id end
     end
     return nil
 end
@@ -115,7 +131,8 @@ function T.PlanLocal(a, px, py, ci, tx, ty)
         for dest, seconds in pairs(flights[best].t) do
             local node = flights[dest]
             if node and ns.KnowsNode(dest, node) then
-                local d = dist[best] + seconds + TAXI_OVERHEAD
+                -- Umsteigen ist ein durchgehender Flug: der Aufwand fürs Abheben zählt nur einmal
+                local d = dist[best] + seconds + (via[best] == "fly" and 0 or TAXI_OVERHEAD)
                 if not dist[dest] or d < dist[dest] then
                     dist[dest], prev[dest], via[dest], open[dest] = d, best, "fly", true
                 end
@@ -141,7 +158,14 @@ function T.PlanLocal(a, px, py, ci, tx, ty)
     local tail = { kind = "info", text = ns.F("Continue to your destination in %s", target), done = false, icon = "goto",
         sub = ns.F("saves about %d min", saved) }
     if via[first] == "hearth" then
-        return { { kind = "ride", text = L["Use your Hearthstone"], sub = flights[first].n, done = false, icon = "home" }, tail }
+        local legs = { { kind = "ride", text = L["Use your Hearthstone"], sub = flights[first].n, done = false, icon = "home" } }
+        -- Ruhestein, dann weiter per Flug: die Ersparnis oben rechnet den Flug mit, also gehört er dazu
+        if first ~= bestEnd then
+            T.flyTarget, T.flyTargetId = flights[bestEnd].n, bestEnd
+            legs[#legs + 1] = { kind = "ride", text = ns.F("Fly to %s", flights[bestEnd].n), done = false, icon = "fly" }
+        end
+        legs[#legs + 1] = tail
+        return legs
     end
     if first == bestEnd then return nil end -- nur zu einem Flugpunkt laufen bringt nichts
     local from, dest = flights[first], flights[bestEnd]
@@ -163,17 +187,22 @@ T.knowledge = 0     -- zählt hoch, wenn neue Flugpunkte bekannt werden (Assist.
 local cache = {}
 
 function T.Plan(a)
+    -- Flugziel gilt nur für diesen Plan: ein altes Ziel darf beim nächsten Flugmeister keinen Flug auslösen
+    T.flyTarget, T.flyTargetId = nil, nil
     if not a then return nil end
     local tx, ty, tci = S.WorldPoint(a)
     local px, py, pci = S.PlayerWorld()
     if not (tx and px and tci and pci) then return nil end
     if tci == pci then
+        T.dockReached = nil -- angekommen (oder nie abgefahren): ein gemerkter Hafen gilt nicht mehr
         -- gleicher Zielpunkt innerhalb einer Sekunde: gemerkten Plan liefern (Suche über das Flugnetz sparen)
         -- Der Schlüssel enthält alles, wovon der Plan abhängt: Ziel, grobe Spielerposition (25 Yards),
-        -- Stand der bekannten Flugpunkte und ob der Ruhestein bereit ist.
+        -- Stand der bekannten Flugpunkte, ob der Ruhestein bereit ist und wohin er führt.
         local now = GetTime()
-        local key = ("%.0f:%.0f:%.0f:%.0f:%d:%s:%s:%s"):format(tx, ty, px / 25, py / 25, T.knowledge,
-            tostring(ns.cdb.taxi), tostring(ns.cdb.taxiIds), tostring(HearthReady()))
+        local key = ("%.0f:%.0f:%.0f:%.0f:%d:%s:%s:%s:%s:%s:%s:%d"):format(tx, ty, px / 25, py / 25, T.knowledge,
+            tostring(ns.cdb.taxi), tostring(ns.cdb.taxiIds), tostring(ns.db.travel.flights),
+            tostring(ns.db.travel.minSaving), tostring(HearthReady()),
+            tostring(GetBindLocation and GetBindLocation()), math.floor(Speed()))
         if cache.key == key and now - cache.t < PLAN_TTL then
             T.flyTarget, T.flyTargetId = cache.fly, cache.flyId
             return cache.plan
@@ -199,6 +228,16 @@ function T.Plan(a)
             if not bestCost or cost < bestCost then best, bestCost = d, cost end
         end
     end
+    -- Hafen schon erreicht und auf dem Schiff (noch derselbe Kontinent bis zum Ladebildschirm): dieser Hafen
+    -- bleibt erledigt, sonst zeigt der Pfeil nach dem Ablegen zurück zum Steg
+    local now = GetTime and GetTime() or 0
+    local reached = T.dockReached
+    if reached and (reached.ci ~= pci or now - reached.t > DOCK_MEMORY) then reached, T.dockReached = nil, nil end
+    if reached then
+        for _, d in ipairs(Prepare()) do
+            if d.t == reached.dock and d.destCi == tci then best = d end
+        end
+    end
 
     local target = ZoneName(a.m, a.z)
     if not best then
@@ -207,10 +246,12 @@ function T.Plan(a)
     local name = ns.L[KIND_NAME[best.t.kind] or best.t.kind]
     local destName = ZoneName(best.t.dest, best.t.destName)
     local toDock = S.WorldDistance(pci, px, py, best.x, best.y) or 0
+    if toDock <= DOCK_RADIUS then T.dockReached = { dock = best.t, ci = pci, t = now } end
+    local atDock = toDock <= DOCK_RADIUS or (T.dockReached ~= nil and T.dockReached.dock == best.t)
     local legs = {
         { kind = "goto", text = ns.F("To the dock: %s to %s", name, destName),
           sub = ZoneName(best.t.m), point = { m = best.t.m, x = best.x, y = best.y, w = true, ci = best.ci, r = DOCK_RADIUS },
-          done = toDock <= DOCK_RADIUS, icon = best.t.kind },
+          done = atDock, icon = best.t.kind },
         { kind = "ride", text = ns.F("Take the %s to %s", name, destName), done = false, icon = best.t.kind },
         { kind = "info", text = ns.F("Continue to your destination in %s", target), done = false, icon = "goto" },
     }

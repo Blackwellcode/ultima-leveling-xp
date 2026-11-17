@@ -271,6 +271,7 @@ local function Feature(page, label, text, x, y, w)
     t:SetWidth(w - 12)
     t:SetWordWrap(true)
     t:SetText(text)
+    return 20 + t:GetStringHeight()
 end
 
 local function BuildHowTo(page)
@@ -282,18 +283,21 @@ local function BuildHowTo(page)
     y = y - Legend(page, 2, L["NOW"], L["Your next step with distance and walking time. Right-click a line to skip it."], y)
     y = y - Legend(page, 3, L["Bonuses"], L["An orange word means you can act: click it."], y)
     y = y - Legend(page, 4, L["Arrow"], L["Points the way. Drag it wherever you like."], y)
-    Legend(page, 5, L["Buttons"], L["Eight buttons, each one explained on the next page."], y)
-    -- Darunter vier Funktionen in zwei Spalten
-    local fy = y0 - SKETCH_H - 22
+    y = y - Legend(page, 5, L["Buttons"], L["Eight buttons, each one explained on the next page."], y)
+    -- Darunter vier Funktionen in zwei Spalten, unter Skizze und Legende (die Legende wird je nach
+    -- Sprache höher als die Skizze)
+    local fy = math.min(y0 - SKETCH_H, y) - 22
     local rule = Hairline(page)
     rule:SetHeight(1)
     rule:SetPoint("TOPLEFT", 0, fy + 10)
     rule:SetPoint("TOPRIGHT", 0, fy + 10)
     local half = CW / 2
-    Feature(page, L["Routes"], L["Level 1 to 60, picked for your level, next route by itself."], 0, fy, half)
-    Feature(page, L["Progress"], L["Reads quest log, bags and spells and ticks steps off."], half, fy, half)
-    Feature(page, L["TRAVEL"], L["Boat, zeppelin, flight or Hearthstone, whatever is faster."], 0, fy - 54, half)
-    Feature(page, L["Map"], L["Map and nameplate markers, buttons for quest items and targets."], half, fy - 54, half)
+    local h1 = math.max(Feature(page, L["Routes"], L["Level 1 to 60, picked for your level, next route by itself."], 0, fy, half),
+        Feature(page, L["Progress"], L["Reads quest log, bags and spells and ticks steps off."], half, fy, half))
+    local fy2 = fy - math.max(54, h1 + 12)
+    local h2 = math.max(Feature(page, L["TRAVEL"], L["Boat, zeppelin, flight or Hearthstone, whatever is faster."], 0, fy2, half),
+        Feature(page, L["Map"], L["Map and nameplate markers, buttons for quest items and targets."], half, fy2, half))
+    return -(fy2 - h2) + 8 -- benötigte Höhe der Seite
 end
 
 -- Seite Knöpfe: jeder Knopf des Fensters mit Symbol (wie im Fenster), Name und Zweck, zwei Spalten.
@@ -432,7 +436,6 @@ local function Build()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    frame:SetScript("OnHide", function() ns.cdb.welcomed = true end) -- auch Escape zählt als gesehen
     if UISpecialFrames then table.insert(UISpecialFrames, "UltimaWelcome") end
     ns.Round(frame, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -2, 14)
     ns.Round(frame, "round", TH.radius.panel, C.panel, "BACKGROUND", 0)
@@ -473,13 +476,19 @@ local function Build()
     headRule:SetPoint("TOPLEFT", LEFT, -88)
     headRule:SetPoint("TOPRIGHT", -RIGHT, -88)
 
+    local room, need = HEIGHT - TOP - FOOTER_H, 0
     for i, builder in ipairs(BUILDERS) do
         local page = CreateFrame("Frame", nil, frame)
         page:SetPoint("TOPLEFT", LEFT, -TOP)
-        page:SetSize(CW, HEIGHT - TOP - FOOTER_H)
-        builder(page)
+        page:SetSize(CW, room)
+        need = math.max(need, builder(page) or 0)
         page:Hide()
         pages[i] = page
+    end
+    -- Längere Texte (Sprache, Umbruch) brauchen mehr Platz: Fenster wächst, statt dass Seiten überlappen
+    if need > room then
+        frame:SetHeight(HEIGHT + need - room)
+        for _, page in ipairs(pages) do page:SetHeight(need) end
     end
     frame.buttonsPage = pages[2]
     frame.choices = pages[3] -- Berufe und Dungeons (auch für den Oberflächen-Test)
@@ -499,11 +508,17 @@ local function Build()
     end)
     frame.fade = ns.FadeIn(frame, TH.motion.base)
     frame:Hide()
+    -- Erst nach dem Hide oben: Gesehen ist das Fenster erst, wenn du es schließt (Knopf oder Escape).
+    -- Blendet nur die ganze Oberfläche aus (Alt+Z), bleibt es "gezeigt" und zählt nicht.
+    frame:SetScript("OnHide", function(self)
+        if not self:IsShown() then ns.cdb.welcomed = true end
+    end)
 end
 
 function ns.ShowWelcome()
     if not frame then Build() end
     frame:Show()
+    frame:Raise() -- vor dem Optionsfenster, wenn es von dort geöffnet wird
     Show(1)
 end
 
@@ -517,11 +532,17 @@ ns.On("READY", function()
             wait:RegisterEvent("PLAYER_REGEN_ENABLED")
             wait:SetScript("OnEvent", function(self)
                 self:UnregisterAllEvents()
-                ns.ShowWelcome()
+                -- inzwischen von Hand geöffnet und geschlossen: nicht noch einmal aufdrängen
+                if ns.cdb.welcomed then return end
+                ns.Guard("Welcome", ns.ShowWelcome)
             end)
             return
         end
         ns.ShowWelcome()
     end
-    if C_Timer and C_Timer.After then C_Timer.After(3, Open) else Open() end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(3, function() ns.Guard("Welcome", Open) end)
+    else
+        Open()
+    end
 end)

@@ -78,6 +78,16 @@ local function CorpseGoal()
     if not (C_DeathInfo and C_DeathInfo.GetCorpseMapPosition and C_Map and C_Map.GetBestMapForUnit) then return nil end
     local map = C_Map.GetBestMapForUnit("player")
     local pos = map and C_DeathInfo.GetCorpseMapPosition(map)
+    -- Leiche in einer anderen Zone als der Friedhof: die Position gibt es dann nur auf einer übergeordneten
+    -- Karte (Kontinent), also die Eltern-Karten nachfragen
+    local hops = 0
+    while map and not pos and hops < 3 and C_Map.GetMapInfo do
+        local info = C_Map.GetMapInfo(map)
+        map = info and info.parentMapID
+        if map == 0 then map = nil end
+        pos = map and C_DeathInfo.GetCorpseMapPosition(map)
+        hops = hops + 1
+    end
     if not pos then return nil end
     local x, y = pos:GetXY()
     if ns.IsSecret(x) or ns.IsSecret(y) or not x then return nil end
@@ -86,7 +96,10 @@ end
 
 local function GoalFromView(view)
     local corpse = CorpseGoal()
-    if corpse then return corpse, false end
+    if corpse then
+        ns.Travel.flyTarget, ns.Travel.flyTargetId = nil, nil -- als Geist kein Flug zu einem alten Ziel
+        return corpse, false
+    end
     local waypoint = view and R.Waypoint(view) or nil
     local plan = ns.Travel.Plan(waypoint)
     if plan then
@@ -96,7 +109,9 @@ local function GoalFromView(view)
         for _, leg in ipairs(plan) do
             if leg.kind == "ride" then Nav.rideIcon = leg.icon break end
         end
-        return target, target == nil
+        -- Wartephase nur, wenn der Plan wirklich eine Überfahrt, einen Flug oder den Ruhestein enthält;
+        -- ein reiner Hinweis ("keine Fährverbindung") ist keine Überfahrt
+        return target, target == nil and Nav.rideIcon ~= nil
     end
     return waypoint, false
 end
@@ -197,9 +212,30 @@ function Nav.Target()
     return points[idx], idx, #points
 end
 
+-- Restweg in Yards von (px, py) bis zum Ziel: zum aktuellen Zwischenpunkt (firstLeg, wenn der Aufrufer den
+-- Abstand schon kennt, sonst Luftlinie), dann entlang aller weiteren. Zählt nur Punkte auf deinem Kontinent
+-- (eine Überfahrt bricht die Summe ab). nil ohne Weg.
+function Nav.Remaining(px, py, pci, firstLeg)
+    if not (points and points[idx] and px) then return nil end
+    if pci ~= nil and points[idx].ci ~= nil and points[idx].ci ~= pci then return nil end
+    local total = firstLeg or Dist(px, py, points[idx].x, points[idx].y)
+    for i = idx, #points - 1 do
+        local a, b = points[i], points[i + 1]
+        if a.ci ~= b.ci then break end
+        total = total + Dist(a.x, a.y, b.x, b.y)
+    end
+    return total
+end
+
 Nav.Redraw = DrawPins
 
 ns.On("VIEW", function(view) Nav.Update(view) end)
+
+-- Fortschritt auf dem Weg (Zwischenpunkte, Neuplanung) auch ohne sichtbaren Pfeil: sonst blieben die Punkte auf
+-- Minimap und Weltkarte beim ersten Zwischenpunkt stehen, wenn der Pfeil ausgeblendet ist
+if C_Timer and C_Timer.NewTicker then
+    C_Timer.NewTicker(0.25, function() if points then ns.Guard("Nav", Nav.Target) end end)
+end
 ns.On("ROUTES_LOADED", function()
     ns.Paths.Build()
     goalKey = nil

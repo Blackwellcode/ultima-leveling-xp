@@ -130,7 +130,11 @@ function P.Done(a, ctx)
     local tag = a[1]
     if tag == "accept" then return S.OnQuest(a.q) or S.TurnedIn(a.q) or Unavailable(a.q) or P.ChainAhead(a.q) end
     -- Abgabe einer Quest, die nicht im Log ist: nie angenommen oder abgebrochen, nichts abzugeben
-    if tag == "turnin" then return S.TurnedIn(a.q) or not S.OnQuest(a.q) end
+    if tag == "turnin" then
+        if S.TurnedIn(a.q) or not S.OnQuest(a.q) then return true end
+        -- optionale Abgabe: nur, wenn die Quest schon fertig ist; sonst hält sie die Route nicht an
+        return a.opt == true and S.HasOpenObjectives(a.q) == true
+    end
     if tag == "complete" then
         if S.TurnedIn(a.q) then return true end
         if not S.OnQuest(a.q) then return true end -- Quest fehlt: nicht blockieren, Annahme-Schritt zeigt es
@@ -314,9 +318,15 @@ function P.ChainNotStarted(step, player, pending)
     for _, entry in ipairs(pending) do
         if entry.a[1] ~= "accept" then return false end
     end
+    -- Quests, die dieser Schritt selbst annimmt: ihre Abgabe im selben Schritt ist keine Folgequest einer
+    -- fremden Reihe ("annehmen und sofort abgeben", Lieferquests); sonst fiel der Schritt still weg
+    local acceptedHere = {}
+    for _, entry in ipairs(pending) do acceptedHere[entry.a.q or false] = true end
     for _, entry in ipairs(P.Actions(step, player)) do
         local a = entry.a
-        if a[1] == "turnin" and a.q and not S.OnQuest(a.q) and not S.TurnedIn(a.q) then return true end
+        if a[1] == "turnin" and a.q and not acceptedHere[a.q] and not S.OnQuest(a.q) and not S.TurnedIn(a.q) then
+            return true
+        end
     end
     return false
 end

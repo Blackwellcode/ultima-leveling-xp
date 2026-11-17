@@ -153,7 +153,10 @@ local function OnTaxi()
         local name, kind = TaxiNodeName(i), TaxiNodeGetType(i)
         if name and (kind == "CURRENT" or kind == "REACHABLE") then
             ns.cdb.taxi[name] = true
-            if ids[i] then ns.cdb.taxiIds[ids[i]] = true end
+            if ids[i] then
+                ns.cdb.taxiIds[ids[i]] = true
+                ns.cdb.taxiNames[ids[i]] = name -- Name in Client-Sprache (Ruhestein-Ort, Travel.lua)
+            end
             if kind == "REACHABLE" then reachable[#reachable + 1] = { i = i, name = name, id = ids[i] } end
         end
     end

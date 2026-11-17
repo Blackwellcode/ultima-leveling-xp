@@ -82,9 +82,9 @@ local function Update(self, elapsed)
         return
     end
     local tx, ty, tci = S.WorldPoint(target)
-    local px, py, pci = HBD:GetPlayerWorldPosition()
+    local px, py, pci = S.PlayerWorld() -- prüft x, y und Kontinent auf Schutz (nil = geschützt)
     local facing = GetPlayerFacing()
-    if ns.IsSecret(facing) or ns.IsSecret(px) then facing, px = nil, nil end -- geschuetzt: Pfeil kurz ausblenden
+    if ns.IsSecret(facing) then facing = nil end -- geschuetzt: Pfeil kurz ausblenden
     if not (tx and px and facing) or pci ~= tci then
         self.tex:Hide()
         SetLabel(self, nil)
@@ -99,7 +99,9 @@ local function Update(self, elapsed)
     local near = dist <= radius
     local c = near and ns.COLORS.ok or ns.ACCENT
     self.tex:SetVertexColor(c[1], c[2], c[3])
-    SetLabel(self, Meters(dist), Clock(dist / ns.RunSpeed()))
+    -- Entfernung und Zeit bis zum Ziel über alle Zwischenpunkte; Richtung und Farbe gelten dem nächsten Punkt
+    local total = ns.Nav.Remaining(px, py, pci, dist) or dist
+    SetLabel(self, Meters(total), Clock(total / ns.RunSpeed()))
 end
 
 local function Build()
@@ -158,6 +160,9 @@ function ns.ApplyArrow(resetPosition)
     local db = ns.db
     arrow:SetScale(db.arrow.scale * (db.window.autoScale and db.window.scale or 1))
     arrow:SetShown(db.arrow.shown)
+    -- Knopf im Panel mitziehen: der Pfeil lässt sich auch per Befehl, Minimap und Optionen schalten
+    local button = ns.panel and ns.panel.buttonByKey and ns.panel.buttonByKey.arrow
+    if button and button.SetActive then button:SetActive(db.arrow.shown) end
     if resetPosition then
         arrow:ClearAllPoints()
         arrow:SetPoint("TOP", UIParent, "TOP", 0, -140)

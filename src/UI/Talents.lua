@@ -170,6 +170,7 @@ local function Build(parent)
     card = CreateFrame("Frame", "UltimaTalentCard", parent)
     card:SetWidth(CARD_W)
     card:SetFrameStrata("HIGH")
+    card:SetClampedToScreen(true) -- breites Talentfenster oder kleine Auflösung: Karte bleibt sichtbar
     ns.Round(card, "shadow", 24, { 0, 0, 0, 0.6 }, "BACKGROUND", -2, 14)
     ns.Round(card, "round", ns.Theme.radius.panel, C.panel, "BACKGROUND")
     ns.Round(card, "ring", ns.Theme.radius.panel, C.cardBorder, "BORDER")

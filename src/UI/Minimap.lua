@@ -29,7 +29,7 @@ ns.On("READY", function()
         OnTooltipShow = function(tooltip)
             tooltip:AddLine(ns.TITLE)
             local view = ns.view
-            if view and view.route then tooltip:AddLine(view.route.n, ns.COLORS.text[1], ns.COLORS.text[2], ns.COLORS.text[3]) end
+            if view and view.route then tooltip:AddLine(ns.Runner.DisplayName(view.route), ns.COLORS.text[1], ns.COLORS.text[2], ns.COLORS.text[3]) end
             local muted = ns.COLORS.text3
             for _, line in ipairs({ ns.L["Left: window"], ns.L["Right: options"], ns.L["Shift: arrow"] }) do
                 tooltip:AddLine(line, muted[1], muted[2], muted[3])

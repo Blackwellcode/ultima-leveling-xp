@@ -188,6 +188,18 @@ playerPos[1], playerPos[2], playerPos[3] = -600, -3800, 0
 local plan2 = ns.Travel.Plan({ "goto", m = 1439, x = 900, y = 6500, w = true, ci = 1 })
 check("Spieler in Wetlands: Hafen Menethil statt Stormwind", plan2 and plan2[1].point.m == 1437,
     plan2 and ("Karte " .. plan2[1].point.m))
+-- Audit 2026-11-17: am Hafen angekommen, dann legt das Schiff ab (noch derselbe Kontinent): der Pfeil zeigt
+-- nicht zurück zum Steg
+do
+  local dock = plan2 and plan2[1].point
+  playerPos[1], playerPos[2] = dock.x, dock.y
+  local atDock = ns.Travel.Plan({ "goto", m = 1439, x = 900, y = 6500, w = true, ci = 1 })
+  playerPos[1], playerPos[2] = dock.x + 120, dock.y + 60
+  local sailing = ns.Travel.Plan({ "goto", m = 1439, x = 900, y = 6500, w = true, ci = 1 })
+  check("Fähre: nach dem Ablegen kein Pfeil zurück zum Hafen", atDock and atDock[1].done == true
+    and sailing and sailing[1].done == true and ns.Travel.ArrowTarget(sailing) == nil,
+    sailing and ("Hafen erledigt " .. tostring(sailing[1].done)) or "kein Plan")
+end
 playerPos[1], playerPos[2], playerPos[3] = 900, 6400, 1
 check("Auf dem Zielkontinent keine Reise mehr", ns.Travel.Plan({ "goto", m = 1439, x = 900, y = 6500, w = true, ci = 1 }) == nil)
 
@@ -388,6 +400,12 @@ check("Am Ziel ohne NPC: Hinweis im Panel", ns.view.main == 4 and type(p.tip._te
 p.title._font = nil
 ns.EnsureFonts()
 check("EnsureFonts setzt fehlende Schrift neu", p.title._font ~= nil and p.title._text ~= nil and p.title._text ~= "")
+-- Umgestelltes Feld (Zeile -> Schrittsatz) behält nach EnsureFonts den neuen Stil (Audit 2026-11-16)
+local restyled = ns.Label(UIParent, 15, nil, nil, "Medium")
+if ns.Restyle then ns.Restyle(restyled, "Bold", 22) else restyled:SetFont(ns.FontPath("Bold"), 22, ""); restyled.baseSize = 22 end
+ns.EnsureFonts()
+check("EnsureFonts behält umgestellten Schrittsatz", restyled._size == 22 and restyled._font == ns.FontPath("Bold"),
+  tostring(restyled._font) .. " " .. tostring(restyled._size))
 -- Ziel-Knopf: visiert den NPC des Schritts an (Schritt 4: Thundris Windweaver)
 local tAttrs = {}
 UltimaTargetButton.SetAttribute = function(_, k, val) tAttrs[k] = val end
@@ -429,6 +447,51 @@ check("Reise: Flug Auberdine -> Astranaar wird vorgeschlagen", fp and #fp == 3 a
   and fp[1].text:find("Auberdine", 1, true) and fp[2].kind == "ride" and fp[2].text:find("Astranaar", 1, true)
   and ns.Travel.flyTarget == "Astranaar, Ashenvale", fp and (fp[1].text .. " | " .. fp[2].text .. " | " .. tostring(fp[3].sub)) or "kein Plan")
 check("Reise: am Flugmeister ist die erste Etappe erledigt", fp and fp[1].done == true)
+-- Audit 2026-11-17: beritten rechnet der Plan mit Reitgeschwindigkeit (vorher immer 7 Yards/s zu Fuß)
+do
+  local function Saved(plan) return plan and tonumber((plan[#plan].sub or ""):match("(%d+)")) or 0 end
+  local onFoot = Saved(fp)
+  local speed = GetUnitSpeed
+  GetUnitSpeed = function() return 14 end
+  ns.RunSpeed()
+  playerPos[1] = playerPos[1] + 1 -- anderer Cache-Schlüssel
+  local mounted = Saved(ns.Travel.Plan(goal))
+  GetUnitSpeed = speed
+  ns.RunSpeed()
+  playerPos[1] = playerPos[1] - 1
+  check("Reise: beritten kleinere Ersparnis durch den Flug als zu Fuß", onFoot > 0 and mounted < onFoot,
+    ("zu Fuß %d min, beritten %d min"):format(onFoot, mounted))
+  -- Regression 2026-11-17: Fluggeschwindigkeit (Greif) wird nicht als Reisegeschwindigkeit übernommen
+  local onTaxi = UnitOnTaxi
+  UnitOnTaxi = function() return true end
+  GetUnitSpeed = function() return 30 end
+  local inFlight = ns.RunSpeed()
+  UnitOnTaxi, GetUnitSpeed = onTaxi, speed
+  check("Geschwindigkeit: im Flug nicht übernommen", inFlight < 30, tostring(inFlight))
+end
+-- Audit 2026-11-17: Flug nur über bekannte Zwischenpunkte. Thalanaar -> Rut'theran führt über Feathermoon und
+-- Auberdine; die Daten hatten dafür eine Gesamtzeit als Direktkante, der Plan schlug den Flug ohne die
+-- Zwischenpunkte vor, und die Flugkarte bot ihn nicht an.
+do
+  local taxi = ns.cdb.taxi
+  local thal = UltimaFlightData.A[31]
+  local rut = UltimaFlightData.A[27]
+  local saveX, saveY = playerPos[1], playerPos[2]
+  playerPos[1], playerPos[2], playerPos[3] = thal.x, thal.y, 1
+  local far = { "goto", m = 1438, x = rut.x + 5, y = rut.y + 5, w = true, ci = 1 }
+  ns.cdb.taxi = { ["Thalanaar, Feralas"] = true, ["Rut'theran Village, Teldrassil"] = true }
+  ns.Travel.Plan(far)
+  local without = ns.Travel.flyTarget
+  ns.cdb.taxi = { ["Thalanaar, Feralas"] = true, ["Rut'theran Village, Teldrassil"] = true,
+    ["Feathermoon, Feralas"] = true, ["Auberdine, Darkshore"] = true }
+  ns.Travel.Plan(far)
+  local with = ns.Travel.flyTarget
+  check("Flug: ohne bekannte Zwischenpunkte kein Flug nach Rut'theran, mit ihnen schon",
+    without ~= "Rut'theran Village, Teldrassil" and with == "Rut'theran Village, Teldrassil",
+    ("ohne: %s, mit: %s"):format(tostring(without), tostring(with)))
+  ns.cdb.taxi = taxi
+  playerPos[1], playerPos[2] = saveX, saveY
+end
 playerPos[1], playerPos[2] = -280, 2830
 check("Reise: am Ziel-Flugpunkt kein Vorschlag mehr", ns.Travel.Plan(goal) == nil and ns.Travel.flyTarget == nil)
 -- kurzer Weg: laufen
@@ -448,6 +511,90 @@ check("Reise: Ruhestein auf Abklingzeit wird nicht vorgeschlagen", not (hp2 and 
 GetBindLocation = function() return "Goldshire" end
 C_Item.GetItemCount = function() return 0 end
 ns.cdb.taxi = {}
+-- Audit 2026-11-16, Reiseplaner
+do
+  local T = ns.Travel
+  -- a) Fähren nach Fraktion: ein Horde-Charakter bekommt keinen Hafen aus Allianz-Routen
+  local allianceDock
+  for _, t in ipairs(UltimaTravelData) do
+    if t.f == "A" and t.w and t.ci == 1 then allianceDock = t break end
+  end
+  local faction = UnitFactionGroup
+  UnitFactionGroup = function() return "Horde" end
+  playerPos[1], playerPos[2], playerPos[3] = allianceDock.x, allianceDock.y, 1
+  local hplan = T.Plan({ "goto", m = allianceDock.dest, x = 50, y = 50 })
+  local usesAlliance = false
+  for _, t in ipairs(UltimaTravelData) do
+    if hplan and hplan[1].point and t.f == "A" and t.w and t.x == hplan[1].point.x and t.y == hplan[1].point.y then usesAlliance = true end
+  end
+  check("Reise: Horde bekommt keinen Allianz-Hafen", allianceDock ~= nil and not usesAlliance,
+    hplan and hplan[1].text .. " Karte " .. tostring(hplan[1].point and hplan[1].point.m) or "kein Plan")
+  UnitFactionGroup = faction
+  check("Reise: Allianz nutzt den Allianz-Hafen weiter", (function()
+    local ap = T.Plan({ "goto", m = allianceDock.dest, x = 50, y = 50 })
+    return ap and ap[1].point and ap[1].point.x == allianceDock.x
+  end)())
+
+  -- b) Altes Flugziel verfällt, sobald ein Plan ohne Flug entsteht (sonst Auto-Flug zum falschen Ziel)
+  ns.cdb.taxi = { ["Auberdine, Darkshore"] = true, ["Astranaar, Ashenvale"] = true }
+  playerPos[1], playerPos[2], playerPos[3] = 560, 6340, 1
+  T.Plan(goal)
+  local before = T.flyTarget
+  playerPos[1], playerPos[2], playerPos[3] = 1300, -8600, 0
+  T.Plan({ "goto", m = 1439, x = 900, y = 6500, w = true, ci = 1 })
+  check("Reise: Flugziel verfällt bei Plan zu anderem Kontinent", before == "Astranaar, Ashenvale" and T.flyTarget == nil,
+    tostring(before) .. " -> " .. tostring(T.flyTarget))
+  T.flyTarget = "Astranaar, Ashenvale"
+  T.Plan(nil)
+  check("Reise: Flugziel verfällt ohne Wegpunkt", T.flyTarget == nil, tostring(T.flyTarget))
+
+  -- c) Ruhestein, dann Flug: der Flug gehört zum Plan und wird als Flugziel gemerkt
+  local flights = T.Flights()
+  local astr
+  for id, node in pairs(flights) do if node.n == "Astranaar, Ashenvale" then astr = id end end
+  local farId, farDist
+  for dest in pairs(flights[astr].t) do
+    local node = flights[dest]
+    if node and node.ci == 1 then
+      local d = math.sqrt((node.x - 2000) ^ 2 + (node.y - 7000) ^ 2) + math.sqrt((node.x - flights[astr].x) ^ 2 + (node.y - flights[astr].y) ^ 2)
+      if not farDist or d > farDist then farId, farDist = dest, d end
+    end
+  end
+  ns.cdb.taxi = { ["Astranaar, Ashenvale"] = true, [flights[farId].n] = true }
+  playerPos[1], playerPos[2], playerPos[3] = 2000, 7000, 1
+  C_Item.GetItemCount = function(i) return i == 6948 and 1 or 0 end
+  GetBindLocation = function() return "Astranaar" end
+  C_Container.GetItemCooldown = function() return 0, 0 end
+  local far = flights[farId]
+  local hf = T.Plan({ "goto", m = 1440, x = far.x + 5, y = far.y + 5, w = true, ci = 1 })
+  check("Reise: Ruhestein und Flug -> beide Etappen, Flugziel gemerkt", hf and hf[1].icon == "home" and hf[2].kind == "ride"
+    and hf[2].icon == "fly" and T.flyTarget == far.n,
+    hf and (hf[1].text .. " | " .. hf[2].text .. " | " .. tostring(T.flyTarget)) or "kein Plan")
+
+  -- d) Ruhestein im deutschen Client: Ort in Client-Sprache, Abgleich über den gesehenen Namen des Flugpunkts
+  ns.cdb.taxi = { ["Astranaar, Ashenvale"] = true }
+  ns.cdb.taxiNames = { [astr] = "Astranaar, Eschental" }
+  GetBindLocation = function() return "Astranaar" end
+  T.Plan(goal) -- gleicher Ort in beiden Sprachen: Vergleich darf nicht schaden
+  ns.cdb.taxiNames = { [astr] = "Astranar-DE, Eschental" }
+  GetBindLocation = function() return "Astranar-DE" end
+  playerPos[1], playerPos[2] = 2100, 7000 -- andere Position: kein gemerkter Plan aus dem Aufruf davor
+  local de = T.Plan(goal)
+  check("Reise: Ruhestein mit Ort in Client-Sprache wird erkannt", de and de[1].icon == "home", de and de[1].text or "kein Plan")
+  ns.cdb.taxiNames = {}
+  GetBindLocation = function() return "Goldshire" end
+  C_Item.GetItemCount = function() return 0 end
+  C_Container.GetItemCooldown = function() return 100, 3600 end
+  ns.cdb.taxi = {}
+
+  -- e) Ziel ohne Fährverbindung (eigener Kontinent): Pfeil zeigt keine Überfahrt
+  local realWaypoint = ns.Runner.Waypoint
+  ns.Runner.Waypoint = function() return { "goto", m = 1439, x = 10, y = 10, w = true, ci = 77 } end
+  playerPos[1], playerPos[2], playerPos[3] = 560, 6340, 1
+  ns.Nav.Update({ route = { id = "t", s = {} }, lead = {}, sticky = {}, with = {}, open = {}, waiting = 0 })
+  check("Reise: ohne Fährverbindung keine Anzeige 'Überfahrt'", ns.Nav.onRide == false, tostring(ns.Nav.onRide))
+  ns.Runner.Waypoint = realWaypoint
+end
 -- Gefahr: Gegner 3+ Level ueber dem Spieler (Darkshore-Murlocs 19/20 bei Level 16, 2026-11-10)
 local myLevel = UnitLevel("player")
 local plateLevels = { e1 = myLevel + 4, e2 = myLevel + 3, e3 = myLevel + 1 }
@@ -608,6 +755,54 @@ local outBefore3 = #out
 SlashCmdList.ULTIMALEVELING("debug")
 local bagsLine = table.concat(out, " | ", outBefore3 + 1)
 check("Essen: /ultima debug nennt das gefundene Essen", bagsLine:find("food Coyote Steak", 1, true) ~= nil, bagsLine:match("bags: [^|]*") or "keine bags-Zeile")
+-- Audit 2026-11-17: ein Kochrezept vor dem Essen nennt im Tooltip auch "well fed", ist aber kein Essen
+-- (Itemklasse 9); "Sattel" ist nicht "Satt"
+do
+  local RECIPE_ID, SADDLE_ID = 2698, 2699
+  local itemInfo, tip, slots, slotInfo = C_Item.GetItemInfoInstant, C_TooltipInfo.GetBagItem,
+    C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo
+  C_Item.GetItemInfoInstant = function(i)
+    if i == RECIPE_ID then return i, "Recipe", "Cooking", "", 0, 9, 5 end
+    return i, "Consumable", "Food", "", 0, 0, 5
+  end
+  C_Container.GetContainerNumSlots = function(bag) return bag == 0 and 3 or 0 end
+  C_Container.GetContainerItemInfo = function(bag, slot)
+    if bag ~= 0 then return nil end
+    return ({ { itemID = RECIPE_ID }, { itemID = SADDLE_ID }, { itemID = FOOD_ID } })[slot]
+  end
+  C_TooltipInfo.GetBagItem = function(bag, slot)
+    if slot == 1 then return { lines = { { leftText = "Recipe: Roast Boar" }, { leftText = "Teaches you how to cook. You will become well fed." } } } end
+    if slot == 2 then return { lines = { { leftText = "Saddle Bag" }, { leftText = "Use: wellfedness? no: Sattelzeug" } } } end
+    return tip(bag, slot)
+  end
+  ns.Bonus.BagsChanged()
+  local t3 = ns.Bonus.Tiles()
+  check("Essen: Rezept vor dem Essen wird übersprungen, das Essen angeboten",
+    t3[2].action and t3[2].action.item == FOOD_ID, t3[2].action and tostring(t3[2].action.item) or "keine Aktion")
+  C_Item.GetItemInfoInstant, C_TooltipInfo.GetBagItem = itemInfo, tip
+  C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo = slots, slotInfo
+end
+-- Audit 2026-11-17: im Dungeon zählen auch Quests der Vorbereitung, die unter der Zone stehen (Westfall),
+-- nicht unter dem Dungeon (vorher Hinweis "Dungeon 0 Q", obwohl die Quests im Log waren)
+do
+  local inInstance, instanceInfo, num, getInfo = IsInInstance, GetInstanceInfo, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo
+  local dmQuest
+  for _, s in ipairs(ns.Runner.Get("A:dungeonquests:03. The Deadmines").s) do
+    for _, a in ipairs(s.a) do if a[1] == "accept" and a.q and not dmQuest then dmQuest = a.q end end
+  end
+  IsInInstance = function() return true, "party" end
+  GetInstanceInfo = function() return "The Deadmines" end
+  C_QuestLog.GetNumQuestLogEntries = function() return 2 end
+  C_QuestLog.GetInfo = function(i)
+    if i == 1 then return { isHeader = true, title = "Westfall" } end
+    return { isHeader = false, title = "Quest", questID = dmQuest }
+  end
+  local _, alerts = ns.Bonus.Tiles()
+  local text = ""
+  for _, a in ipairs(alerts or {}) do if (a.text or ""):find("Dungeon", 1, true) then text = a.text end end
+  check("Dungeon: Quest der Vorbereitung unter der Zone zählt mit", text == ns.F("Dungeon %d Q", 1), text)
+  IsInInstance, GetInstanceInfo, C_QuestLog.GetNumQuestLogEntries, C_QuestLog.GetInfo = inInstance, instanceInfo, num, getInfo
+end
 C_Container.GetContainerNumSlots = function() return 0 end
 ns.Bonus.BagsChanged()
 -- Leveling-Talente: Karte neben dem Talentfenster (Paladin, Stufe 14, ein Punkt frei), Befehl, keine
@@ -849,6 +1044,28 @@ do
   UltimaWelcome:Hide()
   if UltimaWelcome._OnHide then UltimaWelcome._OnHide(UltimaWelcome) end
   check("Willkommen: Schließen merkt sich den Charakter", ns.cdb.welcomed == true)
+  -- Oberfläche ausgeblendet (Alt+Z): Fenster bleibt "gezeigt" und gilt nicht als gesehen (Audit 2026-11-16)
+  ns.cdb.welcomed = nil
+  UltimaWelcome:Show()
+  if UltimaWelcome._OnHide then UltimaWelcome._OnHide(UltimaWelcome) end
+  check("Willkommen: Ausblenden der Oberfläche zählt nicht als gesehen", ns.cdb.welcomed == nil, tostring(ns.cdb.welcomed))
+  UltimaWelcome:Hide()
+  if UltimaWelcome._OnHide then UltimaWelcome._OnHide(UltimaWelcome) end
+  -- Optionen: Routentyp wählt die Route sofort neu, Sprache meldet den /reload-Hinweis
+  local kindOpt, langOpt
+  for _, category in ipairs(ns.OPTION_CATEGORIES) do
+    for _, opt in ipairs(category.options) do
+      if opt.path == "routeKind" then kindOpt = opt elseif opt.path == "lang" then langOpt = opt end
+    end
+  end
+  local autoSelect, forced = ns.Runner.AutoSelect, nil
+  ns.Runner.AutoSelect = function(force) forced = force end
+  if kindOpt and kindOpt.after then kindOpt.after() end
+  ns.Runner.AutoSelect = autoSelect
+  check("Optionen: Routentyp wählt die Route sofort neu", forced == true, tostring(forced))
+  local outLang = #out
+  if langOpt and langOpt.after then langOpt.after() end
+  check("Optionen: Sprachwechsel nennt /reload", table.concat(out, " | ", outLang + 1):find("/reload", 1, true) ~= nil)
   ns.cdb.professions = { firstaid = true, cooking = true, fishing = true }
 end
 
@@ -873,6 +1090,12 @@ do
   for _, e in ipairs(list) do if e.name == "The Deadmines" then deadmines = e end end
   check("Dungeons: Deadmines mit 13 Quests, keine erledigt", deadmines and deadmines.total == 13 and deadmines.done == 0,
     deadmines and (deadmines.total .. "/" .. deadmines.done))
+  -- Eigene Ergänzung (tools/guides): Wailing Caverns für die Allianz, direkt nach Deadmines, 4 Quests
+  local wc, wcAt
+  for i, e in ipairs(list) do if e.name == "Wailing Caverns" then wc, wcAt = e, i end end
+  check("Dungeons: Allianz-Liste enthält Wailing Caverns nach Deadmines mit 5 Quests",
+    wc and wc.total == 5 and names[wcAt - 1] == "The Deadmines" and wc.range == "15-30",
+    wc and (wc.total .. " Quests, Platz " .. wcAt .. ", " .. tostring(wc.range)) or "fehlt")
   -- Start aus der Leveling-Route, dann Schlafsack: Rückweg bleibt die Leveling-Route
   R.Load("A:route:13-15 Westfall")
   R.StartBonus(deadmines.route.id)
@@ -1136,6 +1359,193 @@ do
     "Schritt " .. tostring(ns.view.main))
   R.EndBonus()
   C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Pfeil: Entfernung und Zeit bis zum Ziel über alle Zwischenpunkte, nicht nur bis zum nächsten Wegpunkt
+-- (Spieler 2026-11-16). Deadmines-Vorbereitung Schritt 9, du stehst am Greifenmeister, Ziel Wilder.
+do
+  local R = ns.Runner
+  local id = "A:dungeonquests:03. The Deadmines"
+  local onQuest, flagged = C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted
+  C_QuestLog.IsOnQuest = function(q) return q == 141 or q == 2040 end
+  C_QuestLog.IsQuestFlaggedCompleted = function(q) return q == 65 or q == 132 or q == 135 end
+  local pos = { playerPos[1], playerPos[2], playerPos[3] }
+  playerPos[1], playerPos[2], playerPos[3] = 490.03, -8835.82, 0
+  R.Load("A:route:13-15 Westfall")
+  R.StartBonus(id)
+  ns.Update()
+  ns.Nav.Update(ns.view)
+  local target, idx, count = ns.Nav.Target()
+  local remaining = ns.Nav.Remaining and ns.Nav.Remaining(playerPos[1], playerPos[2], playerPos[3])
+  check("Pfeil-Zeit: Weg zum Ziel hat Zwischenpunkte", target ~= nil and (count or 0) > 2, tostring(count) .. " Punkte")
+  local direct = math.sqrt((490.03 - 501.31) ^ 2 + (-8835.82 + 8468.65) ^ 2)
+  check("Pfeil-Zeit: Restweg zählt alle Zwischenpunkte (länger als die Luftlinie)", remaining ~= nil and remaining > direct,
+    ("%s statt %.0f Yards"):format(tostring(remaining and math.floor(remaining)), direct))
+  UltimaArrow._OnUpdate(UltimaArrow, 1)
+  -- erste Strecke wie der Pfeil: Abstand aus HBD (im Test fest 350 Yards), dann alle weiteren Zwischenpunkte
+  local _, firstLeg = HBD:GetWorldVector(0, playerPos[1], playerPos[2], target.x, target.y)
+  local total = ns.Nav.Remaining(playerPos[1], playerPos[2], playerPos[3], firstLeg)
+  check("Pfeil-Zeit: Pfeil zeigt die Zeit bis zum Ziel", total ~= nil and total > firstLeg
+    and UltimaArrow.time._text == ns.Clock(total / ns.RunSpeed()),
+    tostring(UltimaArrow.time._text) .. " / erwartet " .. tostring(total and ns.Clock(total / ns.RunSpeed())))
+  playerPos[1], playerPos[2], playerPos[3] = pos[1], pos[2], pos[3]
+  R.EndBonus()
+  C_QuestLog.IsOnQuest, C_QuestLog.IsQuestFlaggedCompleted = onQuest, flagged
+end
+
+-- Audit 2026-11-16, Namensplaketten: Zielrahmen folgt dem Abschalter, Fehler im Handler laufen über ns.Guard
+do
+  local realExists, realTarget = UnitExists, TargetFrame
+  TargetFrame = P("TargetFrame")
+  TargetFrame.GetFrameLevel = function() return 1 end
+  local realIsPlayer = UnitIsPlayer
+  UnitIsPlayer = UnitIsPlayer or function() return false end
+  local stubs = { UnitClassification = function() return "normal" end, UnitGUID = function() return nil end }
+  local realStubs = {}
+  for name, fn in pairs(stubs) do realStubs[name] = _G[name]; _G[name] = _G[name] or fn end
+  local realDiff = GetQuestDifficultyColor
+  GetQuestDifficultyColor = GetQuestDifficultyColor or function() return { r = 1, g = 1, b = 0 } end
+  local outStart = #out
+  UnitExists = function(u) return u == "target" or (realExists and realExists(u)) end
+  ns.db.questPlates.enabled = true
+  fire("PLAYER_LOGIN")
+  local count = #created
+  fire("PLAYER_TARGET_CHANGED")
+  local widget
+  for i = count + 1, #created do
+    if created[i].level then widget = created[i] break end
+  end
+  check("Plaketten: Zielrahmen bekommt Level und Rahmen", widget ~= nil and widget._shown == true
+    and widget.level._shown == true and #out == outStart, table.concat(out, " | ", outStart + 1))
+  ns.db.questPlates.enabled = false
+  fire("PLAYER_TARGET_CHANGED")
+  check("Plaketten: abgeschaltet -> auch am Zielrahmen nichts", widget ~= nil and widget._shown == false,
+    widget and tostring(widget._shown) or "kein Widget")
+  ns.db.questPlates.enabled = true
+  local realLevel = UnitLevel
+  UnitLevel = function(u) if u == "target" then error("Testfehler Plakette") end return realLevel(u) end
+  local outBefore = #out
+  local ok = pcall(fire, "PLAYER_TARGET_CHANGED")
+  local reported = table.concat(out, " | ", outBefore + 1):find("Testfehler Plakette", 1, true) ~= nil
+  check("Plaketten: Fehler im Ereignis landet als Meldung, nicht als Absturz", ok and reported,
+    "ohne Fehler " .. tostring(ok) .. ", gemeldet " .. tostring(reported))
+  UnitLevel = realLevel
+  UnitExists, TargetFrame, UnitIsPlayer, GetQuestDifficultyColor = realExists, realTarget, realIsPlayer, realDiff
+  for name in pairs(stubs) do _G[name] = realStubs[name] end
+end
+
+-- Audit 2026-11-17, Namensplaketten: Questmarker erscheint (vorher fragte Paint eine nie gesetzte globale
+-- Variable "npc" ab, QuestInfo lief nie)
+do
+  local saved = { UnitExists = UnitExists, TargetFrame = TargetFrame, UnitIsPlayer = UnitIsPlayer,
+    UnitGUID = UnitGUID, UnitClassification = UnitClassification, GetQuestDifficultyColor = GetQuestDifficultyColor,
+    Questie = Questie, QuestieLoader = QuestieLoader, IsAddOnLoaded = C_AddOns.IsAddOnLoaded, strsplit = strsplit }
+  strsplit = strsplit or function(sep, str)
+    local parts = {}
+    for part in (str .. sep):gmatch("(.-)" .. sep) do parts[#parts + 1] = part end
+    return (table.unpack or unpack)(parts)
+  end
+  TargetFrame = P("TargetFrame")
+  TargetFrame.GetFrameLevel = function() return 1 end
+  UnitIsPlayer = function() return false end
+  UnitClassification = function() return "normal" end
+  GetQuestDifficultyColor = function() return { r = 1, g = 1, b = 0 } end
+  UnitGUID = function(u) if u == "target" then return "Creature-0-1-2-3-4711-0" end end
+  UnitExists = function(u) return u == "target" end
+  Questie = { icons = { slay = "icon-slay", loot = "icon-loot" }, ICON_TYPE_SLAY = 1 }
+  local objective = { Update = function() end, Completed = false, Needed = 8, Collected = 3, Icon = 1 }
+  QuestieLoader = { ImportModule = function() return { lookupByKey = { m_4711 = { { objective = objective } } } } end }
+  C_AddOns.IsAddOnLoaded = function(name) return name == "Questie" end
+  ns.QuestSource.Attach()
+  ns.db.questPlates.enabled = true
+  local count = #created
+  fire("PLAYER_TARGET_CHANGED")
+  local quest
+  for _, f in ipairs(created) do
+    local q = rawget(f, "level") and rawget(f, "quest")
+    if q and rawget(q, "_shown") then quest = q end
+  end
+  check("Plaketten: Questmarker mit Fortschritt am Ziel", quest ~= nil and quest.text._text == "3/8",
+    quest and tostring(quest.text._text) or "kein Questmarker sichtbar")
+  UnitExists, TargetFrame, UnitIsPlayer, UnitGUID = saved.UnitExists, saved.TargetFrame, saved.UnitIsPlayer, saved.UnitGUID
+  UnitClassification, GetQuestDifficultyColor = saved.UnitClassification, saved.GetQuestDifficultyColor
+  Questie, QuestieLoader, C_AddOns.IsAddOnLoaded = saved.Questie, saved.QuestieLoader, saved.IsAddOnLoaded
+  strsplit = saved.strsplit
+  ns.QuestSource.Disable(nil)
+  fire("PLAYER_TARGET_CHANGED")
+  local _ = count
+end
+
+-- Audit 2026-11-17: Geist, Leiche in einer anderen Zone als der Friedhof -> Position über die Eltern-Karte
+-- (vorher: keine Position, der Pfeil zeigte zum Routen-Wegpunkt statt zur Leiche)
+do
+  local saved = { ghost = UnitIsGhost, death = C_DeathInfo, best = C_Map.GetBestMapForUnit, info = C_Map.GetMapInfo }
+  UnitIsGhost = function() return true end
+  C_Map.GetBestMapForUnit = function() return 1413 end
+  C_Map.GetMapInfo = function(m) return { name = "Map " .. m, parentMapID = m == 1413 and 1411 or 0 } end
+  C_DeathInfo = { GetCorpseMapPosition = function(m)
+    if m == 1411 then return { GetXY = function() return 0.4, 0.6 end } end
+  end }
+  playerPos[1], playerPos[2], playerPos[3] = 0, 0, 1
+  ns.Nav.Update(ns.view)
+  local target = ns.Nav.Target()
+  local wx, wy = HBD:GetWorldCoordinatesFromZone(0.4, 0.6, 1411)
+  check("Geist: Leiche über die Eltern-Karte gefunden", target ~= nil and target.x == wx and target.y == wy,
+    target and ("%s/%s statt %s/%s"):format(tostring(target.x), tostring(target.y), wx, wy) or "kein Ziel")
+  UnitIsGhost, C_DeathInfo, C_Map.GetBestMapForUnit, C_Map.GetMapInfo = saved.ghost, saved.death, saved.best, saved.info
+  ns.Nav.Update(ns.view)
+end
+
+-- Audit 2026-11-17 (Bedienung): Pfeil per Befehl/Minimap geschaltet -> Knopf im Panel zeigt den Zustand;
+-- /ultima reset wirkt sofort und sagt nicht mehr "nach /reload"
+do
+  local button = ns.panel.buttonByKey.arrow
+  local was = ns.db.arrow.shown
+  ns.ToggleArrow()
+  local afterOne = button.on._shown == ns.db.arrow.shown
+  ns.ToggleArrow()
+  check("Pfeil-Knopf folgt dem Schalter außerhalb des Panels", afterOne and button.on._shown == ns.db.arrow.shown
+    and ns.db.arrow.shown == was, tostring(button.on._shown))
+  local outBefore = #out
+  SlashCmdList.ULTIMALEVELING("reset")
+  local said = table.concat(out, " | ", outBefore + 1)
+  check("/ultima reset: sofort, ohne Hinweis auf /reload", said:find("/reload", 1, true) == nil
+    and said:find(ns.L["Positions reset."], 1, true) ~= nil, said)
+end
+
+-- Audit 2026-11-16, Panel: Routenliste bei verstecktem Fenster, Fehler an den Fehler-Handler des Spiels
+do
+  local panel = ns.panel
+  local wasShown = panel._shown
+  if UltimaRoutePicker then UltimaRoutePicker:Hide() end
+  panel._shown = false
+  ns.ToggleRoutePicker()
+  check("Panel: Routenliste zeigt das versteckte Fenster mit", panel._shown == true and UltimaRoutePicker ~= nil
+    and UltimaRoutePicker._shown == true, "Fenster " .. tostring(panel._shown))
+  UltimaRoutePicker:Hide()
+  panel._shown = false
+  local combat = InCombatLockdown
+  InCombatLockdown = function() return true end
+  ns.ToggleRoutePicker()
+  check("Panel: im Kampf bei verstecktem Fenster keine unsichtbar offene Liste", UltimaRoutePicker._shown == false)
+  InCombatLockdown = combat
+  -- Audit 2026-11-17: Dungeon-Liste offen, Routen-Knopf -> Routenliste (vorher schloss er nur die Liste)
+  panel._shown = true
+  UltimaRoutePicker:Hide()
+  ns.ToggleDungeonPicker()
+  local dungeonsOpen = UltimaRoutePicker._shown == true and UltimaRoutePicker.mode == "dungeons"
+  ns.ToggleRoutePicker()
+  check("Panel: Routen-Knopf wechselt von der Dungeon-Liste zur Routenliste", dungeonsOpen
+    and UltimaRoutePicker._shown == true and UltimaRoutePicker.mode == "routes",
+    tostring(UltimaRoutePicker.mode) .. ", offen " .. tostring(UltimaRoutePicker._shown))
+  UltimaRoutePicker:Hide()
+  panel._shown = wasShown
+  local caught
+  geterrorhandler = function() return function(msg) caught = msg end end
+  ns.Guard("Audit", function() error("Testfehler BugSack") end)
+  check("Guard: Fehler geht auch an den Fehler-Handler (BugSack)", caught ~= nil and caught:find("Testfehler BugSack", 1, true) ~= nil,
+    tostring(caught))
+  geterrorhandler = nil
 end
 
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
