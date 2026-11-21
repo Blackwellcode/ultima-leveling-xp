@@ -240,3 +240,66 @@ ns.On("ROUTES_LOADED", function()
     ns.Paths.Build()
     goalKey = nil
 end)
+
+-- Laufspur: jede Sekunde deine Position ans Wegnetz. Flug, Fahrzeug, Fallen, Schwimmen und fliegendes
+-- Reittier unterbrechen die Spur; ein geschützter Wert (Kampf) ebenso. Steht deine eigene Bewegung
+-- (Geschwindigkeit 0), trägt dich etwas (Schiff, Zeppelin, Aufzug) oder du stehst: auch das unterbricht.
+local function Blocked()
+    local list = {
+        UnitOnTaxi and UnitOnTaxi("player"),
+        UnitInVehicle and UnitInVehicle("player"),
+        IsFalling and IsFalling(),
+        IsSwimming and IsSwimming(),
+        IsFlying and IsFlying(),
+    }
+    for i = 1, 5 do
+        local v = list[i]
+        if ns.IsSecret(v) or v then return true end
+    end
+    local speed = GetUnitSpeed and GetUnitSpeed("player")
+    if ns.IsSecret(speed) or not speed or speed <= 0 then return true end
+    local dead = UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")
+    if ns.IsSecret(dead) or dead then return true end
+    return false, speed
+end
+
+-- Fallen zwischen zwei Takten: länger als ein Sprung in der Luft = Absturz (Klippe hinab). Das merkt sich
+-- ein leichter Bildwächter, der nächste Takt unterbricht dann die Spur.
+local FALL_MAX = 0.8      -- Sekunden: ein normaler Sprung ist kürzer in der Luft
+local fallTime, fell = 0, false
+function Nav.WatchFall(elapsed)
+    local falling = IsFalling and IsFalling()
+    if ns.IsSecret(falling) then return end
+    if falling then
+        fallTime = fallTime + (elapsed or 0)
+        if fallTime > FALL_MAX then fell = true end
+    else
+        fallTime = 0
+    end
+end
+
+local SPEED_SLACK = 1.5   -- so viel schneller als die eigene Geschwindigkeit (+ 5 Yards) = getragen
+local lastPos             -- { ci, x, y, t } Position beim letzten Takt
+function Nav.RecordTrail()
+    if not (ns.Paths and ns.Paths.Record) then return end
+    local px, py, pci = S.PlayerWorld()
+    local blocked, speed = Blocked()
+    if fell then
+        blocked, fell = true, false
+    end
+    local now = GetTime and GetTime() or 0
+    -- schneller bewegt, als du läufst (Deck eines fahrenden Schiffs, Aufzug): getragen
+    if not blocked and px and lastPos and lastPos.ci == pci and now > lastPos.t then
+        local moved = math.sqrt((px - lastPos.x) ^ 2 + (py - lastPos.y) ^ 2)
+        if moved > speed * (now - lastPos.t) * SPEED_SLACK + 5 then blocked = true end
+    end
+    lastPos = px and { ci = pci, x = px, y = py, t = now } or nil
+    ns.Paths.Record(pci, px, py, blocked)
+end
+if C_Timer and C_Timer.NewTicker then
+    C_Timer.NewTicker(1, function() ns.Guard("Trail", Nav.RecordTrail) end)
+end
+if CreateFrame then
+    local watcher = CreateFrame("Frame")
+    watcher:SetScript("OnUpdate", function(_, elapsed) Nav.WatchFall(elapsed) end)
+end

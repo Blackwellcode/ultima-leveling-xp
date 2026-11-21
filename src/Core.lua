@@ -33,6 +33,7 @@ local DEFAULTS = {
         pins = { world = true, minimap = true, dots = 8 },
         buttons = { item = true, target = true },
         talents = { overlay = true, remind = true }, -- Leveling-Talente im Talentfenster, Erinnerung an freie Punkte
+        trail = {},            -- eigene Laufspuren je Kontinent (src/Engine/Paths.lua), ergänzen das Wegnetz
         lang = "auto",         -- Oberflächen-Sprache: "auto" = Client-Sprache, sonst Code wie "deDE"
         auraIds = {},          -- im Spiel gelernte Zauber-IDs der Forever-Buffs (Schlüssel -> spellId)
         campItems = {},        -- im Spiel gelernte Lagerfeuer-Items (itemID -> true)

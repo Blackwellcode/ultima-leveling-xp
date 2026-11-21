@@ -145,6 +145,8 @@ ns.RegisterLocale("koKR", {
     ["on"] = "켜짐", ["off"] = "꺼짐",
     ["Level border %s"] = "레벨 테두리 %s", ["Hints %s"] = "도움말 %s",
     ["Positions reset."] = "위치를 초기화했습니다.",
+    ["Walking trails cleared."] = "이동 경로 기록을 삭제했습니다.",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "이동 경로 기록: %s개 구간. /ultima trail reset 으로 삭제합니다.",
     ["Route: %s, step: %s, routes loaded: %s"] = "경로: %s, 단계: %s, 불러온 경로: %s",
     ["Events missing in this client: %s"] = "이 클라이언트에 없는 이벤트: %s",
     ["Language: %s (setting: %s). Options: auto, %s"] = "언어: %s (설정: %s). 선택: auto, %s",

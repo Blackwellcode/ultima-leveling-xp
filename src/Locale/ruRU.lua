@@ -145,6 +145,8 @@ ns.RegisterLocale("ruRU", {
     ["on"] = "вкл.", ["off"] = "выкл.",
     ["Level border %s"] = "Рамка уровня %s", ["Hints %s"] = "Подсказки %s",
     ["Positions reset."] = "Позиции сброшены.",
+    ["Walking trails cleared."] = "Следы передвижения удалены.",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "Следы передвижения: %s участков. /ultima trail reset удаляет их.",
     ["Route: %s, step: %s, routes loaded: %s"] = "Маршрут: %s, шаг: %s, загружено маршрутов: %s",
     ["Events missing in this client: %s"] = "В этом клиенте нет событий: %s",
     ["Language: %s (setting: %s). Options: auto, %s"] = "Язык: %s (настройка: %s). Варианты: auto, %s",

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.6.0 (2026-11-21)
+
+- Paths learn from you: Ultima remembers where you walk (account-wide) and uses those stretches for the dots
+  and the arrow. Walk once straight across open ground and the next path takes that shortcut. Flights,
+  boats, falls, swimming, ghost runs and teleports are not recorded. `/ultima trail` shows how much is stored,
+  `/ultima trail reset` deletes it.
+- Fewer detours: a path along known routes may now be at most 1.5 times the straight line plus 40 yards
+  (before: plus 120). Where other routes cross the straight line, the straight line wins once the path is a
+  quarter longer.
+- Route data updated to the latest guide source: new flight points on Mount Hyjal, corrected dungeon zones for
+  The Drowned City and Alcaz Prison, updated Dwarf/Gnome 1-14, Alliance 11-20 and Skyborne routes.
+
 ## 2.5.2 (2026-11-21)
 
 - Hearthstone steps: if your Hearthstone is already set to the place the step names, the step counts as done

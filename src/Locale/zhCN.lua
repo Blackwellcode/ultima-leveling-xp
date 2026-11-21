@@ -145,6 +145,8 @@ ns.RegisterLocale("zhCN", {
     ["on"] = "开", ["off"] = "关",
     ["Level border %s"] = "等级边框 %s", ["Hints %s"] = "提示 %s",
     ["Positions reset."] = "位置已重置。",
+    ["Walking trails cleared."] = "已清除行走轨迹。",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "行走轨迹：%s 段。/ultima trail reset 可清除。",
     ["Route: %s, step: %s, routes loaded: %s"] = "路线：%s，步骤：%s，已加载路线：%s",
     ["Events missing in this client: %s"] = "此客户端缺少的事件：%s",
     ["Language: %s (setting: %s). Options: auto, %s"] = "语言：%s（设置：%s）。可选：auto, %s",

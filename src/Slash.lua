@@ -7,6 +7,7 @@ local ALIAS = {
     arrow = "pfeil", routes = "routen", border = "rahmen", hints = "tipps",
     language = "sprache", lang = "sprache", options = "optionen", config = "optionen", settings = "optionen",
     automation = "quests", talents = "talente", welcome = "willkommen", setup = "willkommen", dungeons = "dungeon", instanz = "dungeon", instance = "dungeon",
+    trail = "spuren", trails = "spuren",
 }
 -- Kurzformen für /ultima sprache
 local LANG_SHORT = {
@@ -95,6 +96,16 @@ local function Handle(msg)
         -- sofort anwenden wie der Knopf im Optionsfenster (vorher erst nach /reload)
         ns.Guard("Settings", ns.ApplySettings, true)
         print(ns.PREFIX .. L["Positions reset."])
+    elseif cmd == "spuren" then
+        -- eigene Laufspuren (Wegnetz): Anzahl zeigen oder mit "reset" löschen
+        if arg == "reset" then
+            ns.Paths.ClearTrail()
+            print(ns.PREFIX .. L["Walking trails cleared."])
+        else
+            local total = 0
+            for ci in pairs(ns.db.trail or {}) do total = total + ns.Paths.TrailCount(ci) end
+            print(ns.PREFIX .. ns.F("Walking trails: %s pieces. /ultima trail reset deletes them.", total))
+        end
     elseif cmd == "debug" then
         -- Zustand ausgewaehlter Texte, um unsichtbare Schrift im Spiel einzugrenzen (technische Ausgabe)
         print(ns.PREFIX .. "debug")
@@ -110,6 +121,11 @@ local function Handle(msg)
         DebugLine("paths", function()
             return (ns.Paths.IsReady() and "ready" or "building") .. ", " .. tostring(ns.Paths.stats.nodes) .. " nodes, "
                 .. tostring(ns.Paths.stats.edges) .. " edges, " .. tostring(ns.Paths.stats.links) .. " links"
+        end)
+        DebugLine("trail", function()
+            local list = {}
+            for ci in pairs(ns.db.trail or {}) do list[#list + 1] = tostring(ci) .. "=" .. ns.Paths.TrailCount(ci) end
+            return #list > 0 and table.concat(list, ", ") or "-"
         end)
         local p = ns.panel
         if not p then

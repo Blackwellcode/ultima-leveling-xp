@@ -145,6 +145,8 @@ ns.RegisterLocale("esES", {
     ["on"] = "activado", ["off"] = "desactivado",
     ["Level border %s"] = "Borde de nivel %s", ["Hints %s"] = "Consejos %s",
     ["Positions reset."] = "Posiciones restablecidas.",
+    ["Walking trails cleared."] = "Rastros de desplazamiento borrados.",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "Rastros de desplazamiento: %s tramos. /ultima trail reset los borra.",
     ["Route: %s, step: %s, routes loaded: %s"] = "Ruta: %s, paso: %s, rutas cargadas: %s",
     ["Events missing in this client: %s"] = "Eventos ausentes en este cliente: %s",
     ["Language: %s (setting: %s). Options: auto, %s"] = "Idioma: %s (ajuste: %s). Opciones: auto, %s",

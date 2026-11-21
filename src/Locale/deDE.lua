@@ -151,6 +151,8 @@ ns.RegisterLocale("deDE", {
     ["on"] = "an", ["off"] = "aus",
     ["Level border %s"] = "Level-Rahmen %s", ["Hints %s"] = "Hinweise %s",
     ["Positions reset."] = "Positionen zurückgesetzt.",
+    ["Walking trails cleared."] = "Laufspuren gelöscht.",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "Laufspuren: %s Stücke. /ultima spuren reset löscht sie.",
     ["Route: %s, step: %s, routes loaded: %s"] = "Route: %s, Schritt: %s, Routen geladen: %s",
     ["Events missing in this client: %s"] = "Ereignisse im Client nicht vorhanden: %s",
     ["Language: %s (setting: %s). Options: auto, %s"] = "Sprache: %s (Einstellung: %s). Möglich: auto, %s",

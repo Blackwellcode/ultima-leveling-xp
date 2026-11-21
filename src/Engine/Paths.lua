@@ -13,11 +13,15 @@ local S = ns.State
 local CELL = 8          -- Yards: Punkte in derselben Zelle verschmelzen zu einem Knoten
 local MAX_EDGE = 320    -- Yards: weitere Sprünge sind Reisen (Flug, Ruhestein), keine Wege
 local LINK = 30         -- Yards: so nahe Knoten verschiedener Laufwege werden verbunden
+local TRAIL_LINK = 12   -- Yards: Laufspur und Route nur so dicht verbinden (sonst über einen Fluss oder eine Klippe)
 local SNAP = 260        -- Yards: so weit dürfen Start und Ziel vom Netz entfernt sein
 local CANDIDATES = 10   -- so viele Netzpunkte je Seite kommen als Einstieg und Ausstieg in Frage
 local BUCKET = 100      -- Yards: Raster für die Suche nach nahen Knoten
-local DETOUR = 1.5      -- Weg höchstens 1,5-mal so lang wie die Luftlinie (+ 120 Yards), sonst Luftlinie
-local DETOUR_ADD = 120
+local DETOUR = 1.5      -- Weg höchstens 1,5-mal so lang wie die Luftlinie (+ 40 Yards), sonst Luftlinie
+local DETOUR_ADD = 40
+local COVER = 45        -- Yards: ein Punkt der Luftlinie gilt als begangen, wenn ein Netzpunkt so nahe liegt
+local COVER_SHARE = 0.7 -- so viel der Luftlinie begangen: dort lässt sich laufen ...
+local OPEN_DETOUR = 1.25 -- ... dann gilt die Luftlinie schon, wenn der Weg 25 % länger ist (Stadtwege um Häuser: ~1,2)
 local DIRECT = 120      -- Yards: bis zu dieser Luftlinie wird direkt gelaufen
 local SIMPLIFY = 12     -- Yards: Zacken der aufgezeichneten Wege bis zu dieser Abweichung glätten
 local SPACING = 35      -- Yards: Abstand der Wegpunkte (Punkte auf der Karte)
@@ -54,28 +58,126 @@ local function AddTo(index, key, node)
     list[#list + 1] = node
 end
 
-local function NodeAt(g, x, y)
-    local key = math.floor(x / CELL) .. ":" .. math.floor(y / CELL)
-    local node = g.cell[key]
-    if node then return node end
-    node = { x = x, y = y, adj = {} }
-    g.cell[key] = node
-    g.count = g.count + 1
-    Paths.stats.nodes = Paths.stats.nodes + 1
-    AddTo(g.buckets, math.floor(x / BUCKET) .. ":" .. math.floor(y / BUCKET), node)
-    -- Nahe Knoten anderer Laufwege verbinden (feines Raster, nur die 3x3 Nachbarzellen)
-    local nx, ny = math.floor(x / LINK), math.floor(y / LINK)
+-- Nahe Knoten anderer Laufwege verbinden (feines Raster, nur die 3x3 Nachbarzellen). Zwei Knoten aus
+-- Laufspuren verbindet nur das gelaufene Stück selbst, nie die Nähe: zwei Ufer oder oben/unten an einer
+-- Klippe liegen nah beieinander, ohne dass man hinüber kommt.
+local function LinkNear(g, node)
+    local nx, ny = math.floor(node.x / LINK), math.floor(node.y / LINK)
     for i = nx - 1, nx + 1 do
         for j = ny - 1, ny + 1 do
             for _, other in ipairs(g.near[i .. ":" .. j] or {}) do
-                if Dist(x, y, other.x, other.y) <= LINK and Link(node, other) then
+                local reach = (node.trail or other.trail) and TRAIL_LINK or LINK
+                if not (node.trail and other.trail) and Dist(node.x, node.y, other.x, other.y) <= reach
+                    and Link(node, other) then
                     Paths.stats.links = Paths.stats.links + 1
                 end
             end
         end
     end
-    AddTo(g.near, nx .. ":" .. ny, node)
+end
+
+-- Knoten der Rasterzelle; trail = aus einer Laufspur. Landet ein Routenpunkt in der Zelle einer Laufspur,
+-- wird der Knoten ein Routenknoten und bekommt jetzt seine Nahverbindungen.
+local function NodeAt(g, x, y, trail)
+    local key = math.floor(x / CELL) .. ":" .. math.floor(y / CELL)
+    local node = g.cell[key]
+    if node then
+        if node.trail and not trail then
+            node.trail = nil
+            LinkNear(g, node)
+        end
+        return node
+    end
+    node = { x = x, y = y, adj = {}, trail = trail or nil }
+    g.cell[key] = node
+    g.count = g.count + 1
+    Paths.stats.nodes = Paths.stats.nodes + 1
+    AddTo(g.buckets, math.floor(x / BUCKET) .. ":" .. math.floor(y / BUCKET), node)
+    LinkNear(g, node)
+    AddTo(g.near, math.floor(x / LINK) .. ":" .. math.floor(y / LINK), node)
     return node
+end
+
+-------------------------------------------------------------------------------
+-- Laufspuren: wo du selbst gelaufen bist (kontoweit gespeichert, ns.db.trail[Kontinent][Stück] = true).
+-- Ein Stück verbindet zwei Rasterzellen (CELL); Schlüssel "x1:y1:x2:y2" in Zellen, kleinere Zelle zuerst.
+-- So kennt das Netz auch Gelände, durch das keine Route führt, sobald du es einmal betreten hast.
+-------------------------------------------------------------------------------
+local TRAIL_STEP = 15     -- Yards: neues Stück erst nach so viel Bewegung
+local TRAIL_BREAK = 80    -- Yards: weiter in einem Schritt = Teleport, Ladebildschirm, Flug: nicht verbinden
+local TRAIL_MAX = 10000   -- Stücke je Kontinent (etwa 0,3 MB gespeicherte Daten, rund 150 km Laufweg)
+local lastTrail           -- { ci, x, y } letzte aufgezeichnete Position
+local trailCount = {}     -- [Kontinent] = Anzahl Stücke (aus den gespeicherten Daten gezählt)
+local trailPending = {}   -- während eines laufenden Aufbaus aufgezeichnet: { ci, key }, danach verknüpft
+
+local function TrailStore(ci)
+    local db = ns.db
+    if not db then return nil end
+    db.trail = db.trail or {}
+    local t = db.trail[ci]
+    if not t then t = {}; db.trail[ci] = t end
+    if not trailCount[ci] or trailCount[ci].t ~= t then
+        local n = 0
+        for _ in pairs(t) do n = n + 1 end
+        trailCount[ci] = { t = t, n = n }
+    end
+    return t
+end
+
+local function TrailKey(ax, ay, bx, by)
+    local a1, a2 = math.floor(ax / CELL), math.floor(ay / CELL)
+    local b1, b2 = math.floor(bx / CELL), math.floor(by / CELL)
+    if a1 == b1 and a2 == b2 then return nil end
+    if b1 < a1 or (b1 == a1 and b2 < a2) then a1, a2, b1, b2 = b1, b2, a1, a2 end
+    return a1 .. ":" .. a2 .. ":" .. b1 .. ":" .. b2
+end
+
+-- Stück aus einem Schlüssel ins Netz: Knoten in den Zellmitten
+local function TrailLink(ci, key)
+    local a1, a2, b1, b2 = key:match("^(-?%d+):(-?%d+):(-?%d+):(-?%d+)$")
+    if not a1 then return end
+    local g = Graph(ci)
+    local half = CELL / 2
+    local a = NodeAt(g, tonumber(a1) * CELL + half, tonumber(a2) * CELL + half, true)
+    local b = NodeAt(g, tonumber(b1) * CELL + half, tonumber(b2) * CELL + half, true)
+    Link(a, b)
+end
+
+-- Deine Position (Weltkoordinaten). blocked: Flug, Fallen, Schwimmen o. ä. - das unterbricht die Spur
+-- (ein Sprung eine Klippe hinab ist kein Weg zurück nach oben).
+function Paths.Record(ci, x, y, blocked)
+    if not (ci and x and y) or blocked then
+        lastTrail = nil
+        return
+    end
+    local last = lastTrail
+    if last and last.ci == ci then
+        local d = Dist(last.x, last.y, x, y)
+        if d < TRAIL_STEP then return end
+        if d <= TRAIL_BREAK then
+            local t = TrailStore(ci)
+            local key = t and TrailKey(last.x, last.y, x, y)
+            if key and not t[key] and trailCount[ci].n < TRAIL_MAX then
+                t[key] = true
+                trailCount[ci].n = trailCount[ci].n + 1
+                -- ins fertige Netz sofort; während eines Aufbaus vormerken (er liest die Tabelle als Schnappschuss)
+                if ready then TrailLink(ci, key) else trailPending[#trailPending + 1] = { ci, key } end
+            end
+        end
+    end
+    lastTrail = { ci = ci, x = x, y = y }
+end
+
+function Paths.TrailCount(ci)
+    if not TrailStore(ci) then return 0 end
+    return trailCount[ci].n
+end
+
+-- Alle Laufspuren löschen (/ultima spuren reset) und das Netz ohne sie neu aufbauen.
+function Paths.ClearTrail()
+    if ns.db then ns.db.trail = {} end
+    trailCount, trailPending, lastTrail = {}, {}, nil
+    Paths.Build()
 end
 
 -- Liest alle Routen; yield nach jeweils "batch" Wegpunkten.
@@ -100,7 +202,23 @@ local function BuildAll(batch)
             end
         end
     end
+    -- eigene Laufspuren: erst Schnappschuss der Schlüssel (neue Einträge während einer Pause würden ein
+    -- laufendes pairs() durcheinanderbringen), danach die währenddessen aufgezeichneten
+    local snapshot = {}
+    for ci, t in pairs(ns.db and ns.db.trail or {}) do
+        if type(t) == "table" then
+            for key in pairs(t) do snapshot[#snapshot + 1] = { ci, key } end
+        end
+    end
+    for _, e in ipairs(snapshot) do
+        TrailLink(e[1], e[2])
+        n = n + 1
+        if batch and n % batch == 0 then coroutine.yield() end
+    end
     ready = true
+    local pending = trailPending
+    trailPending = {}
+    for _, e in ipairs(pending) do TrailLink(e[1], e[2]) end
 end
 
 -- Aufbau über OnUpdate mit Zeitbudget (4 ms je Bild). Der Handler hängt nur, solange gebaut wird.
@@ -147,6 +265,41 @@ local function Nearby(g, x, y)
     for i = #list, CANDIDATES + 1, -1 do list[i] = nil end
     return list
 end
+
+-- Anteil der Luftlinie, an dem Laufwege irgendeiner Route vorbeiführen (Netzpunkt höchstens COVER entfernt).
+-- Hoch: das Gelände dazwischen ist begehbar, ein Bogen des Netzes ist dann kein nötiger Umweg.
+-- skip(node) = true: Knoten zählt nicht. Find übergibt den Korridor des gefundenen Wegs: der Weg selbst und
+-- andere Aufzeichnungen derselben Straße belegen nicht, dass sich die Luftlinie laufen lässt (eine Straße
+-- auf der Luftlinie mit nötigem Bogen über eine Brücke).
+-- need: Schwelle (Anteil). Mit need bricht die Zählung ab, sobald das Ergebnis feststeht; dann ist der
+-- Rückgabewert nur als "erreicht / nicht erreicht" gegen need verlässlich.
+local function Covered(g, px, py, tx, ty, skip, need)
+    local len = Dist(px, py, tx, ty)
+    local n = math.max(2, math.floor(len / 25))
+    local hit = 0
+    local target = need and need * (n + 1)
+    for i = 0, n do
+        if target then
+            if hit >= target then return hit / (n + 1) end
+            if hit + (n - i + 1) < target then return hit / (n + 1) end
+        end
+        local x, y = px + (tx - px) * i / n, py + (ty - py) * i / n
+        local bx, by = math.floor(x / BUCKET), math.floor(y / BUCKET)
+        local found = false
+        for bi = bx - 1, bx + 1 do
+            for bj = by - 1, by + 1 do
+                for _, node in ipairs(g.buckets[bi .. ":" .. bj] or {}) do
+                    if Dist(node.x, node.y, x, y) <= COVER and not (skip and skip(node)) then found = true break end
+                end
+                if found then break end
+            end
+            if found then break end
+        end
+        if found then hit = hit + 1 end
+    end
+    return hit / (n + 1)
+end
+Paths.Covered = function(ci, px, py, tx, ty) return graph[ci] and Covered(graph[ci], px, py, tx, ty) or 0 end
 
 -- Binärer Heap für A*
 local function Push(heap, node, f)
@@ -281,6 +434,30 @@ function Paths.Find(ci, px, py, tx, ty)
     end
     local length = gScore[GOAL]
     if not length or length > DETOUR * direct + DETOUR_ADD then return nil end
+    -- Begangenes Gelände: ein Bogen des Netzes ist dort kein nötiger Umweg
+    if length > OPEN_DETOUR * direct then
+        -- Korridor: Knoten höchstens COVER neben dem gefundenen Weg (Spieler, Netzpunkte, Ziel)
+        local poly, n = { { x = tx, y = ty } }, came[GOAL]
+        while n do
+            poly[#poly + 1] = n
+            n = came[n]
+        end
+        poly[#poly + 1] = { x = px, y = py }
+        local memo = {}
+        local function InCorridor(node)
+            local v = memo[node]
+            if v == nil then
+                v = false
+                for i = 2, #poly do
+                    local a, b = poly[i - 1], poly[i]
+                    if SegmentDist(node.x, node.y, a.x, a.y, b.x, b.y) <= COVER then v = true break end
+                end
+                memo[node] = v
+            end
+            return v
+        end
+        if Covered(g, px, py, tx, ty, InCorridor, COVER_SHARE) >= COVER_SHARE then return nil end
+    end
 
     -- Linienzug: Spieler, Netzpunkte, Ziel; geglättet und gleichmäßig verteilt
     local line, node = { { x = tx, y = ty } }, came[GOAL]

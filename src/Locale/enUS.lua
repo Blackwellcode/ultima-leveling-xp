@@ -141,6 +141,8 @@ ns.RegisterLocale("enUS", {
     ["Place"] = "Place",
     ["Pocket Litter: camp on a path in the hills near {friendly:Sun Rock Retreat}"] = "Pocket Litter: camp on a path in the hills near {friendly:Sun Rock Retreat}",
     ["Positions reset."] = "Positions reset.",
+    ["Walking trails cleared."] = "Walking trails cleared.",
+    ["Walking trails: %s pieces. /ultima trail reset deletes them."] = "Walking trails: %s pieces. /ultima trail reset deletes them.",
     ["Postponed, ready to turn in"] = "Postponed, ready to turn in",
     ["Quest %s"] = "Quest %s",
     ["Quest %s is not offered here, moving on."] = "Quest %s is not offered here, moving on.",

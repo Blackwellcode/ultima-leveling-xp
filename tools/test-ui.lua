@@ -1587,5 +1587,84 @@ do
   geterrorhandler = nil
 end
 
+-- Laufspur (2026-11-21): Position wird je Sekunde aufgezeichnet, Flug und geschützte Werte unterbrechen
+do
+  local pos = { playerPos[1], playerPos[2], playerPos[3] }
+  local taxi, secret = UnitOnTaxi, ns.IsSecret
+  ns.db.trail = {}
+  UnitOnTaxi = function() return false end
+  playerPos[1], playerPos[2], playerPos[3] = 100, 100, 0
+  ns.Nav.RecordTrail()
+  playerPos[1] = 120
+  ns.Nav.RecordTrail()
+  check("Laufspur: Bewegung von 20 Yards wird ein Stück", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  UnitOnTaxi = function() return true end
+  playerPos[1] = 140
+  ns.Nav.RecordTrail()
+  UnitOnTaxi = function() return false end
+  playerPos[1] = 160
+  ns.Nav.RecordTrail()
+  check("Laufspur: Flug unterbricht, kein Stück über den Flug", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  ns.IsSecret = function(v) return v == false end -- im Kampf geschützt: zählt als unterbrochen
+  playerPos[1] = 180
+  ns.Nav.RecordTrail()
+  ns.IsSecret = secret
+  check("Laufspur: geschützter Wert unterbricht ohne Fehler", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  -- Schiff/Zeppelin: Position ändert sich, du selbst stehst (eigene Geschwindigkeit 0) -> keine Spur übers Wasser
+  local speed = GetUnitSpeed
+  GetUnitSpeed = function() return 0 end
+  playerPos[1] = 200
+  ns.Nav.RecordTrail()
+  playerPos[1] = 220
+  ns.Nav.RecordTrail()
+  GetUnitSpeed = speed
+  check("Laufspur: getragen (Schiff) ergibt keine Spur", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  -- Geist nach dem Tod: kein Weg (Geister laufen durch Gelände, das Lebende nicht nehmen)
+  local dead = UnitIsDeadOrGhost
+  UnitIsDeadOrGhost = function() return true end
+  playerPos[1] = 240; ns.Nav.RecordTrail()
+  playerPos[1] = 260; ns.Nav.RecordTrail()
+  UnitIsDeadOrGhost = dead
+  check("Laufspur: Geisterlauf ergibt keine Spur", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  -- Fall zwischen zwei Takten (Klippe hinab, länger als ein Sprung): kein Stück, sonst führte der Weg hinauf
+  playerPos[1] = 280; ns.Nav.RecordTrail()
+  local falling = IsFalling
+  IsFalling = function() return true end
+  ns.Nav.WatchFall(0.5); ns.Nav.WatchFall(0.5)
+  IsFalling = function() return false end
+  ns.Nav.WatchFall(0.1)
+  playerPos[1] = 300; ns.Nav.RecordTrail()
+  check("Laufspur: Fall zwischen zwei Takten unterbricht", ns.Paths.TrailCount(0) == 1, ns.Paths.TrailCount(0) .. " Stücke")
+  -- normaler Sprung (kurz in der Luft) unterbricht nicht: nach dem Absturz setzt die Spur bei 320 neu an
+  playerPos[1] = 320; ns.Nav.RecordTrail()
+  IsFalling = function() return true end
+  ns.Nav.WatchFall(0.4)
+  IsFalling = function() return false end
+  ns.Nav.WatchFall(0.1)
+  playerPos[1] = 340; ns.Nav.RecordTrail()
+  IsFalling = falling
+  check("Laufspur: kurzer Sprung unterbricht nicht", ns.Paths.TrailCount(0) == 2, ns.Paths.TrailCount(0) .. " Stücke")
+  -- schneller bewegt als du selbst läufst (Deck eines fahrenden Schiffs): kein Stück
+  local time = GetTime
+  local now = 100
+  GetTime = function() return now end
+  ns.Nav.RecordTrail()
+  now = now + 1
+  playerPos[1] = 370; ns.Nav.RecordTrail() -- 50 Yards in 1 s bei 7 Yards/s
+  GetTime = time
+  check("Laufspur: schneller als die eigene Geschwindigkeit ergibt keine Spur", ns.Paths.TrailCount(0) == 2,
+    ns.Paths.TrailCount(0) .. " Stücke")
+  -- Befehl: /ultima trail zeigt die Anzahl, /ultima trail reset löscht
+  local outTrail = #out
+  SlashCmdList.ULTIMALEVELING("trail")
+  check("Laufspur: /ultima trail nennt die Anzahl", table.concat(out, " | ", outTrail + 1):find("2", 1, true) ~= nil,
+    table.concat(out, " | ", outTrail + 1))
+  SlashCmdList.ULTIMALEVELING("trail reset")
+  check("Laufspur: /ultima trail reset löscht", ns.Paths.TrailCount(0) == 0, ns.Paths.TrailCount(0) .. " Stücke")
+  UnitOnTaxi = taxi
+  ns.db.trail = {}
+  playerPos[1], playerPos[2], playerPos[3] = pos[1], pos[2], pos[3]
+end
+
 io.write(fails == 0 and "Alle Pruefungen OK\n" or (fails .. " Pruefungen fehlgeschlagen\n"))
 os.exit(fails == 0 and 0 or 1)
