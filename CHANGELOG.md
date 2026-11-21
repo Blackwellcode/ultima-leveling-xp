@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.5.2 (2026-11-21)
+
+- Hearthstone steps: if your Hearthstone is already set to the place the step names, the step counts as done
+  (English client). Before, it only finished when you bound the Hearthstone during that very step.
+
 ## 2.5.1 (2026-11-17)
 
 - Wailing Caverns (Alliance): Smart Drinks is only asked for once you have handed in Raptor Horns; Mebok does

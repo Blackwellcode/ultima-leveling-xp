@@ -183,6 +183,7 @@ function P.Done(a, ctx)
     end
     if tag == "home" then
         if a.area and S.BoundTo(a.area) then return true end
+        if a.place and S.BoundToName(a.place) then return true end
         return ctx and Mark(ctx.routeId, ctx.si, ctx.ai) or false
     end
     if tag == "fp" then

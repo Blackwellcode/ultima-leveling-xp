@@ -127,6 +127,12 @@ function S.BoundTo(area)
     return name ~= nil and GetBindLocation() == name
 end
 
+-- Ist der Ruhestein an den Ort mit diesem Namen gebunden? Name aus der Route (englisch); greift im
+-- englischen Client, andere Sprachen erkennen den Schritt am Ereignis HEARTHSTONE_BOUND.
+function S.BoundToName(place)
+    return place ~= nil and GetBindLocation ~= nil and GetBindLocation() == place
+end
+
 -- Zielpunkt einer goto-Handlung in Weltkoordinaten: x, y, Kontinent
 function S.WorldPoint(a)
     if not HBD or not a.x or not a.y then return nil end

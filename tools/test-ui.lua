@@ -511,6 +511,29 @@ check("Reise: Ruhestein auf Abklingzeit wird nicht vorgeschlagen", not (hp2 and 
 GetBindLocation = function() return "Goldshire" end
 C_Item.GetItemCount = function() return 0 end
 ns.cdb.taxi = {}
+
+-- Ruhestein schon vorher gebunden (kein HEARTHSTONE_BOUND im Schritt): Wetlands 23-24, "Set your Hearthstone
+-- to Menethil Harbor" ohne bindlocation in der Quelle. Gebunden in Menethil -> erledigt, sonst offen.
+do
+  local homeA, homeSi, homeRoute
+  for _, r in ipairs(ns.routes) do
+    for si, s in ipairs(r.s) do
+      for _, a in ipairs(s.a) do
+        if not homeA and a[1] == "home" and not a.area and (a.t or ""):find("Menethil Harbor", 1, true) then
+          homeA, homeSi, homeRoute = a, si, r
+        end
+      end
+    end
+  end
+  local ctx = homeRoute and { routeId = homeRoute.id, si = homeSi, ai = 1 }
+  GetBindLocation = function() return "Menethil Harbor" end
+  local bound = homeA and ns.Progress.Done(homeA, ctx)
+  GetBindLocation = function() return "Goldshire" end
+  local elsewhere = homeA and ns.Progress.Done(homeA, ctx)
+  check("Ruhestein: vorher in Menethil gebunden zählt als erledigt, woanders nicht",
+    homeA and bound == true and elsewhere == false,
+    homeA and ("Menethil " .. tostring(bound) .. ", Goldshire " .. tostring(elsewhere)) or "Schritt fehlt")
+end
 -- Audit 2026-11-16, Reiseplaner
 do
   local T = ns.Travel
